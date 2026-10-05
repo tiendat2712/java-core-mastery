@@ -1,0 +1,77 @@
+1. Tính chất đóng gói (encapsulation)
+
+- Khái niệm:
+  Tính chất đóng gói được thể hiện qua các từ khóa của
+  access modifier(public, private, protected, )
+
+  Sử dụng: attribute(global variable), method(function)
+           type(class, interface, abstract class, enum): public/private
+
+  + private  : Đóng gói trong phạm vi của class
+
+  + public   : Sử dụng mọi nơi
+
+  +          : Đóng gói trong phạm vi của package (default)
+
+  + protected: Đóng gói trong phạm vi của package
+               Và những class có quan hệ cha/con bên ngoài package
+               (tính chất thừa kế inheritance)
+
+2. Tính chất đa hình (polymorphism)
+
+- Khái niệm:
+  Tính chất đa hình có 2 loại: phương thức & đối tượng
+
+  + Đa hình trong phương thức:
+    Là một phương thức nhưng mà sẽ có nhiều phần thực thi, thể hiện khác nhau
+
+    ** chỉ overloading or overriding cho phương thức, ko dùng cho thuộc tính
+
+    . overloading
+    --> 2 hay nhiều phương thức được gọi là overload nếu
+        + Cùng 1 type(class), tên hàm
+        + Khác:
+          KDL truyền vào của tham số
+          Số lượng tham số truyền vào
+
+    . overriding
+    --> khi có 1 hàm trong class cha, hàm đó dược định nghĩa lại trong class con
+        (liên quan đến tính chất thừa kế)
+        Hàm override trong lớp con bắt buộc phải 'chung phần khai báo' với hàm ở lớp cha
+
+        void(log){ // declaration
+        // implementation
+        }
+  + Đa hình trong đối tượng: "cha new con"
+
+3. Tính chất thừa kế
++ Lớp cha là class
+  when: có các thuộc tính chung
+  --> Con: không bắt buộc override hàm từ cha
+
++ Lớp cha là interface
+  when: có các hàm chung và chưa biết phần thực thi như nào
+
+  Trước Java 9: Interface chỉ chứa hàm trừu tượng
+  --> Con: bắt buộc override hàm trừu tượng từ cha
+
+  /**
+     - [Abstract] Class extends [Abstract] Class
+     - [Abstract] Class implements Interface[s]
+
+     - Interface extends Interface[s]
+
+     - Abstract class implements Interface hoặc Interface extends Interface
+      --> ko bắt buộc phải override abstract method
+   */
+
+
+?? Java có hỗ trợ đa thừa kế không, vì sao ?
+   Đa thừa kế
+   --> Class con kế thừa từ nhiều class cha <extend classA, classB --> chịu >
+
+   Bố: nấu ăn, chạy bộ
+   Mẹ: nấu ăn, coding, đánh cầu lông
+
+   Con extends Bố, Mẹ
+   'keys' --> * Ko bắt buộc override * --> thì Con dùng method nấu ăn của ba hay mẹ ??
