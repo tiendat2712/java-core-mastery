@@ -1,17 +1,20 @@
 package controlling;
 
+import java.util.Random;
+import java.util.Scanner;
+
 public class Ex07ControllExercises {
 
     public static void main(String[] args) {
 
-        System.out.println("1. Nhập 3 số, tìm số lớn nhất.");
+        System.out.println("Nhập 3 số, tìm số lớn nhất.");
         int[] numbers = {3,5,7};
         System.out.println("Max = " + findMax(numbers));
 
         printTriangle(4);
         printCenteredTriangle(5);
 
-
+        displayMenu();
 
     }
 
@@ -49,9 +52,6 @@ public class Ex07ControllExercises {
             System.out.println("Phương trình có nghiệm duy nhất: x = " + x);
         }
     }
-
-
-
 
 
             /*
@@ -134,6 +134,94 @@ public class Ex07ControllExercises {
 
          5. Nhập chuỗi ký tự, lặp lại cho đến khi độ dài chuỗi >= 5.
         */
+    public static void inputPositiveNumber() {
+        Scanner sc = new Scanner(System.in);
+        int n;
+        do {
+            System.out.println("Nhập vào số nguyên dương: ");
+            n = sc.nextInt();
+
+            if (n <= 0) {
+                System.out.println("⚠Nhập sai! Số phải lớn hơn 0. Vui lòng nhập lại.");
+            }
+        }
+        while(n <= 0);
+
+    }
+
+    public static int inputUntilSumGreaterThan100() {
+        Scanner sc = new Scanner(System.in);
+        int sum = 0;
+        while(sum < 100) {
+            System.out.print("Nhập số: ");
+            int i = sc.nextInt();
+            sum += i;
+        }
+        return sum;
+    }
+
+    public static void guessNumberGame() {
+        Scanner sc = new Scanner(System.in);
+        Random rd = new Random();
+
+        int targetNumber = rd.nextInt(10) + 1;
+        int guess = 0;
+        int count = 0; // đếm số lần đoán
+
+        System.out.println("=== CHÀO MỪNG ĐẾN VỚI TRÒ CHƠI ĐOÁN SỐ ===");
+        System.out.println("Máy đã chọn một số từ 1 đến 10. Đố bạn đoán được!");
+
+        // Vòng lặp chạy cho đến khi đoán đúng
+        while (guess != targetNumber) {
+            System.out.print("Nhập dự đoán của bạn: ");
+            guess = sc.nextInt();
+            count++;
+
+            if (guess < targetNumber) {
+                System.out.println("Số bí mật LỚN HƠN. Thử lại nhé!");
+            } else if (guess > targetNumber) {
+                System.out.println("Số bí mật NHỎ HƠN. Thử lại nhé!");
+            } else {
+                System.out.println("Chúc mừng! Bạn đã đoán đúng số " + targetNumber + " sau " + count + " lần đoán.");
+            }
+        }
+    }
+
+    public static void displayMenu() {
+        Scanner sc = new Scanner(System.in);
+        int choice;
+
+        do {
+            System.out.println("=================== MENU CHÍNH ===================");
+            System.out.println("1. Tìm số lớn nhất trong mảng");
+            System.out.println("2. Giải phương trình bậc nhất (ax + b = 0)");
+            System.out.println("3. Chơi trò chơi đoán số");
+            System.out.println("0. Thoát chương trình");
+            System.out.println("==================================================");
+            System.out.print(" Mời bạn chọn chức năng (0 - 3): ");
+
+            choice = sc.nextInt();
+
+            // Sử dụng switch expression / lambda syntax (Java 14+)
+            switch (choice) {
+                case 1 -> {
+                    System.out.println("\n[Đang chạy chức năng 1...]");
+                    // Gọi hàm tìm max vào đây
+                }
+                case 2 -> {
+                    System.out.println("\n[Đang chạy chức năng 2...]");
+                    // Gọi hàm giải phương trình vào đây
+                }
+                case 3 -> {
+                    System.out.println("\n[Đang chạy chức năng 3...]");
+                    // Gọi hàm đoán số vào đây
+                }
+                case 0 -> System.out.println("\n Cảm ơn bạn đã sử dụng chương trình. Tạm biệt!");
+                default -> System.out.println("\n Lựa chọn không hợp lệ! Vui lòng chọn từ 0 đến 3.\n");
+            }
+
+        } while (choice != 0);
+    }
 
 
         /*
@@ -157,31 +245,5 @@ public class Ex07ControllExercises {
         */
 
 
-        /*
-         =====================================================
-         BÀI 6 – BÀI TẬP TỔNG HỢP
-         =====================================================
 
-         1. Viết chương trình máy tính mini:
-            - Nhập 2 số
-            - Chọn phép toán (menu switch-case)
-            - Xử lý chia cho 0
-
-         2. Quản lý điểm học sinh:
-            - Nhập danh sách điểm
-            - Tính trung bình
-            - Xếp loại học lực
-
-         3. Trò chơi đoán số:
-            - Sinh số ngẫu nhiên
-            - Người dùng đoán
-            - So sánh, lặp lại đến khi đúng
-
-         4. Tạo menu động:
-            - Hiển thị lựa chọn
-            - Thực hiện chức năng
-            - Quay lại menu đến khi chọn "Thoát"
-
-         5. Tìm tất cả số nguyên tố từ 2 đến n.
-        */
 }
