@@ -23,7 +23,7 @@ public class Ex03ArrayOperations {
 
         int[] digits = {1, 4, 6, 14, 13, 12, 20};
 //        generate("1. Get even numbers --> ", getEvenNumbers(digits));
-        generate("2. Get even numbers --> ", getNumbers(digits, nb -> nb % 2 ==0));
+        generate("1. Get even numbers --> ", getNumbers(digits, nb -> nb % 2 ==0));
 
         generate("2. Get odd numbers --> ", getNumbers(digits, nb -> nb % 2 != 0));
         generate("3. Get prime numbers --> ", getNumbers(digits, nb -> isPrime(nb)));
