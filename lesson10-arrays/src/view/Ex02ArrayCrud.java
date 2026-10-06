@@ -1,5 +1,7 @@
 package view;
 
+import static utils.ArrayUtils.*;
+
 import java.util.Arrays;
 
 public class Ex02ArrayCrud {
@@ -10,8 +12,7 @@ public class Ex02ArrayCrud {
 
         // Create => add element at index = ? -> add(int[] elements, int index, int newValue){};
         // ex: add(numbers, 2, 88) --> numbers{2, 9, 88, 3, 17, 7};
-        int[] beAddedArray = add(numbers, 2, 88);
-        System.out.println("New adding array --> " + Arrays.toString(beAddedArray));
+        generate("1. Numbers after add --> ", add(numbers, 2, 88));
 
         // Read -> numbers[i]
 
@@ -19,11 +20,23 @@ public class Ex02ArrayCrud {
 
         // Delete => remove element at index = ? -> remove(int[] numbers, int index)
         int[] beRemovedArray = remove(numbers, 2);
-        System.out.println("New removing array --> " + Arrays.toString(beRemovedArray));
+        generate("2. Numbers after remove --> ", beRemovedArray);
 
     }
 
+    /**
+     * Add element into arrays
+     * @param elements
+     * @param index
+     * @param value
+     * @return
+     */
     private static int[] add(int[] elements, int index, int value) {
+        if (index < 0 || index >= elements.length) {
+            System.out.println("ERROR >> Index Of Bound Exception");
+            return elements;
+        }
+
         int[] result = new int[elements.length + 1];
 
         for (int i = 0; i < index; i++) {
@@ -36,10 +49,28 @@ public class Ex02ArrayCrud {
             result[i + 1] = elements[i];
         }
 
+        /*  " line 42 = line 46 "
+            for(int i = target.length - 1; i > index; i--) {
+                    target[i] = origin[i - 1];
+            }
+         */
+
         return result;
     }
 
+    /**
+     * Remove element out of array
+     * @param elements
+     * @param index
+     * @return
+     */
     private static int[] remove(int[] elements, int index) {
+
+        if (index < 0 || index >= elements.length) {
+            System.out.println("ERROR >> Index Of Bound Exception");
+            return elements;
+        }
+
         int[] result = new int[elements.length - 1];
 
         for (int i = 0; i < index; i++) {
@@ -52,6 +83,4 @@ public class Ex02ArrayCrud {
 
         return result;
     }
-
-
 }
