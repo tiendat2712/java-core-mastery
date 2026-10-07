@@ -79,7 +79,7 @@ public class Item implements Comparable<Item> {
         // tăng dần theo price
         // return i1.getPrice().compareTo(i2.getPrice());
 
-        // giảm dần theo id;
-        return i2.getId().compareTo(i1.getId());
+        // tăng dần theo id;
+        return i1.getId().compareTo(i2.getId());
     }
 }

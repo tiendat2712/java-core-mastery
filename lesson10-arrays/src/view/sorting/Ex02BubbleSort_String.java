@@ -25,7 +25,7 @@ public class Ex02BubbleSort_String {
                     if (a == null) {
                         return -1;
                     }
-                    if (b == null && a != null) {
+                    if (b == null) {
                         return 1;
                     }
                     return a.compareTo(b);
