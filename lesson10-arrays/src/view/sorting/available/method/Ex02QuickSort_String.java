@@ -52,7 +52,6 @@ public class Ex02QuickSort_String {
 		 // T nếu nó có implements Comparable<?> vẫn ưu tiên Comparator
 		 */
 
-        2:35:00
 
     }
 
