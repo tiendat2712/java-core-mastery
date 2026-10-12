@@ -12,15 +12,22 @@ public class Ex02AList_SingleType {
 
         List<String> sequences = new ArrayList<>();
 
-        sequences.add("123");
-        sequences.add("world");
-        sequences.add("test");
-        sequences.add("kaka");
+        sequences.add("hello");
+        sequences.add("teo");
+        sequences.add("---");
+        sequences.add("2023");
+        sequences.addAll(List.of("a", "b", "c"));
 
-        System.out.println("Sequences size --> " + sequences.size());
+        sequences.set(1, "nam");
+
+        sequences.remove(2); // remove by index
+
+        sequences.remove("hello"); // remove object
+
+        System.out.println("1. Sequences size: " + sequences.size());
+
         printf("2. Sequences printf", sequences, " ");
 
-        1:15:00
     }
 
     private static void printf(String prefix, List<String> sequences, String delimiter) {
