@@ -1,12 +1,15 @@
 package view.list;
 
 import bean.Item;
+import functional.ItemCond;
 import model.DataModel;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Iterator;
+import java.util.List;
+import java.util.function.Predicate;
 
 import static utils.CollectionUtil.*;
 
@@ -45,27 +48,40 @@ public class Ex03AList_ObjectType {
         generate("1. Items", items);
 
         items.removeIf(t -> t.getStoreId() == 1);
-        generate("1. Items has been removed where storeId == 1", items);
+        generate("2. Items has been removed where storeId == 1", items);
 
-//        Iterator<Item> iterator = items.iterator();
-//        while (iterator.hasNext()) {
-//            Item item = iterator.next();
-//            if (item.getStoreId() == 1) {
-//                iterator.remove();
-//            }
-//        }
-//        generate("1. Items has been removed", items);
-
-        // Xóa những mặt hàng price > 30
         Iterator<Item> iterator = items.iterator();
-        while(iterator.hasNext()) {
+        while (iterator.hasNext()) {
             Item item = iterator.next();
-            if (item.getPrice().compareTo(bd("30")) > 0) {
+            if (item.getStoreId() == 1) {
                 iterator.remove();
             }
         }
-        generate("1. Items has been removed where price > 30", items);
+        generate("2. Items has been removed where storeId == 1", items);
 
+        removeItem(items, i -> i.getPrice().compareTo(bd("30")) > 0);
+        generate("3. Items has been removed where price > 30", items);
+
+        items.forEach(i-> System.out.println(i));
+        items.forEach(System.out::println);
+
+        // Arrays.sort(Object[] objects)
+        // Arrays.sort(T[] elements, Comparator<T> comparator)
+
+        // Collections.sort(List<T> list)
+        // Collections.sort(List<T> list, Comparator<T> comparator)
+
+        // items.sort(Comparator<T> comparator)
+
+    }
+
+    public static void removeItem(List<Item> items, ItemCond ic) { // <=> items.removeIf(Predicate<T> filter)
+        Iterator<Item> iterator = items.iterator();
+        while(iterator.hasNext()) {
+            if (ic.test(iterator.next())) {
+                iterator.remove();
+            }
+        }
     }
 
     public static BigDecimal bd(String value) {

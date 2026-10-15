@@ -17,4 +17,12 @@ public class CollectionUtil {
         System.out.println();
     }
 
+    public static void generateString(String prefix, Collection<String> collection) {
+        System.out.println(prefix + " --> ");
+        for (String item : collection) {
+            System.out.println("+ " + item);
+        }
+        System.out.println();
+    }
+
 }
