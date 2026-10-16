@@ -28,4 +28,8 @@ public class CollectionUtil {
         System.out.println("}\n");
     }
 
+    public static void generate(String prefix, Object value) {
+        System.out.println(prefix + " --> " + value + "\n");
+    }
+
 }

@@ -2,7 +2,7 @@ package bean;
 
 import java.util.Objects;
 
-public class Transaction {
+public class Transaction implements Comparable<Transaction> {
 
     private Trader trader;
     private int year;
@@ -60,6 +60,11 @@ public class Transaction {
     @Override
     public int hashCode() {
         return Objects.hash(getTrader(), getYear(), getValue());
+    }
+
+    @Override
+    public int compareTo(Transaction o) {
+        return Integer.compare(this.getValue(), o.getValue());
     }
 
     @Override
