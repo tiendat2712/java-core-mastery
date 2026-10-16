@@ -14,15 +14,15 @@ public class Ex04AList_AddRemoveRetainAll {
 
         var resultOfAddAll = new ArrayList<String>(listA);
         resultOfAddAll.addAll(listB);
-        generateString("1. List of Add all method", resultOfAddAll);
+        generate("1. List of Add all method", resultOfAddAll);
 
         var resultOfRemoveAll = new ArrayList<String>(listA);
         resultOfRemoveAll.removeAll(listB);
-        generateString("2. List of Remove all method", resultOfRemoveAll);
+        generate("2. List of Remove all method", resultOfRemoveAll);
 
         var resultOfRetainAll = new ArrayList<String>(listA);
         resultOfRetainAll.retainAll(listB);
-        generateString("3. List of Retain all method", resultOfRetainAll);
+        generate("3. List of Retain all method", resultOfRetainAll);
 
     }
 

@@ -11,18 +11,10 @@ public class CollectionUtil {
     private CollectionUtil(){
     }
 
-    public static void generate(String prefix, Collection<Item> collection) {
+    public static <E> void generate(String prefix, Collection<E> collection) {
         System.out.println(prefix + " --> ");
-        for (Item item : collection) {
-            System.out.println("+ " + item);
-        }
-        System.out.println();
-    }
-
-    public static void generateString(String prefix, Collection<String> collection) {
-        System.out.println(prefix + " --> ");
-        for (String item : collection) {
-            System.out.println("+ " + item);
+        for (E e : collection) {
+            System.out.println("+ " + e);
         }
         System.out.println();
     }
