@@ -54,7 +54,9 @@ public class Ex01StrategyPattern_Review {
 
         // filter all red apples and weight heavier than 150g
         var redAndHeavyApples = filterApples(inventory, i -> "red".equals(i.getColor()) && i.getWeight() > 400);
+        var redAndHeavyApples1 = filterApples(inventory, i -> "red".equals(i.getColor()) && i.getWeight() > 400);
         generate("4. Red and Heavy Apples > 400", redAndHeavyApples);
+        generate("4. Red and Heavy Apples > 400 -- 'method reference'", redAndHeavyApples1);
 
         // filter all apples from viet nam
         var applesFromVietNam = filterApples(inventory, i -> "VietNam".equalsIgnoreCase(i.getCountry()));
@@ -105,6 +107,10 @@ public class Ex01StrategyPattern_Review {
 
     private static boolean isVietNam(Apple apple) {
         return "vietnam".equalsIgnoreCase(apple.getCountry());
+    }
+
+    private static boolean isRedAndHeavyApples(Apple apple) {
+        return ("red".equalsIgnoreCase(apple.getColor()) && apple.getWeight() > 400);
     }
 
 
