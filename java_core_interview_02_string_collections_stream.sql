@@ -1,0 +1,1203 @@
+-- PHỎNG VẤN JAVA CORE (PHẦN 2/3) | 20/20 CÂU TRONG ẢNH (câu 23-41: String, Collections, Stream, Lambda)
+-- Đây là tài liệu ôn tập. Mọi dòng đều là comment SQL; code Java chép ra file .java để chạy.
+-- Ví dụ viết cho Java 17 (LTS). Chỗ nào phụ thuộc phiên bản/JVM/OS sẽ được nói rõ.
+-- Lưu ý đánh số: Trong ảnh có 2 câu cùng mang số 25 nên được tách thành JAVA-25a và JAVA-25b.
+-- Nguồn [J1]..[J23] được ánh xạ ở cuối file. Đối chiếu ngày 19/10/2026.
+--
+-- =============================================================================
+-- JAVA-23 | Phân biệt String Literal và String Object
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Cả hai đều là đối tượng thuộc lớp `java.lang.String`, nhưng khác nhau ở cơ chế
+--   cấp phát và tái sử dụng bộ nhớ: String Literal (`"abc"`) được JVM tra cứu trong
+--   String Pool (nằm trên Heap từ Java 7+); nếu đã tồn tại chuỗi có cùng nội dung
+--   thì trả về lại tham chiếu đó để dùng chung, nếu chưa có mới tạo và đưa vào Pool.
+--   Ngược lại, String Object tạo bằng từ khóa `new String("abc")` LUÔN cấp phát một
+--   đối tượng `String` mới trên Heap bên ngoài String Pool (đồng thời nếu literal
+--   `"abc"` chưa có trong Pool thì nạp thêm cả literal vào Pool). [J1][J2]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   - Cơ chế String Pool & `intern()`:
+--     * String Pool (String Intern Pool) giúp tiết kiệm bộ nhớ đáng kể vì các chuỗi
+--       giống nhau trong toàn ứng dụng chia sẻ chung một instance bất biến.
+--     * Gọi `s.intern()` trên một String Object sẽ kiểm tra String Pool: nếu đã có
+--       chuỗi tương đương (`equals`) trong Pool thì trả về tham chiếu trong Pool;
+--       nếu chưa có thì đăng ký chuỗi đó vào Pool và trả về tham chiếu của nó. [J1][J2]
+--   - Cấu trúc lưu trữ nội bộ từ Java 9+ (JEP 254 Compact Strings): [J3]
+--     * Trước Java 9: `String` lưu bằng mảng `char[]` (luôn tốn 2 byte UTF-16 cho
+--       mỗi ký tự).
+--     * Từ Java 9+ (bao gồm Java 17): `String` đổi sang lưu bằng `byte[] value` kèm
+--       trường `byte coder` (`LATIN1` = 1 byte/ký tự nếu chuỗi chỉ chứa ký tự thuộc
+--       bảng mã ISO-8859-1, hoặc `UTF16` = 2 byte/ký tự nếu có ký tự Unicode ngoài
+--       LATIN1), giúp giảm gần một nửa bộ nhớ Heap cho đa số chuỗi ASCII/Latin.
+--
+-- Ví dụ:
+--   public class Main {
+--       public static void main(String[] args) {
+--           String s1 = "Java";                 // trỏ vào String Pool
+--           String s2 = "Java";                 // tái sử dụng cùng object trong Pool
+--           String s3 = new String("Java");     // tạo object mới trên Heap ngoài Pool
+--           String s4 = s3.intern();            // trả về tham chiếu từ String Pool
+--           System.out.println(s1 == s2);       // true  (cùng tham chiếu trong Pool)
+--           System.out.println(s1 == s3);       // false (khác vùng nhớ)
+--           System.out.println(s1 == s4);       // true  (intern() trỏ về Pool)
+--           System.out.println(s1.equals(s3));  // true  (so sánh nội dung ký tự)
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Luôn dùng `.equals()` (hoặc `Objects.equals(a, b)`) để so sánh nội dung chuỗi,
+--     TUYỆT ĐỐI không dùng `==` vì `==` chỉ so sánh địa chỉ tham chiếu.
+--   - Trong thực tế hầu như không bao giờ cần viết `new String("literal")` vì vừa
+--     chậm vừa tạo thêm đối tượng dư thừa trên Heap.
+--   - Bẫy nối chuỗi hằng (Constant Folding): Phép nối các hằng biên dịch như
+--     `"Ja" + "va"` được `javac` gộp sẵn lúc compile thành literal `"Java"` trỏ
+--     thẳng vào String Pool (`"Java" == ("Ja" + "va")` là `true`); nhưng nếu có ít
+--     nhất một vế là biến không phải `final` hằng (ví dụ `String a = "Ja"; a + "va"`),
+--     kết quả sẽ được tạo mới trên Heap lúc runtime (`"Java" == (a + "va")` là `false`). [J1]
+--
+-- =============================================================================
+-- JAVA-24 | Phân biệt StringBuilder và StringBuffer
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Cả `StringBuilder` và `StringBuffer` đều là các lớp chuỗi khả biến (mutable
+--   character sequence) cùng kế thừa từ `AbstractStringBuilder`, cung cấp bộ API
+--   giống hệt nhau (`append`, `insert`, `delete`, `replace`, `reverse`) để thao tác
+--   trực tiếp trên mảng bộ đệm mà không tạo đối tượng mới. Điểm khác biệt cốt lõi
+--   duy nhất: `StringBuffer` là **thread-safe** (các phương thức được đồng bộ hóa
+--   bằng `synchronized`), còn `StringBuilder` **không thread-safe** (không có
+--   `synchronized`) nên có tốc độ thực thi nhanh hơn đáng kể trong môi trường đơn
+--   luồng. [J4][J5]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   - Đồng bộ hóa (Synchronization):
+--     * `StringBuffer`: Hầu hết các phương thức (`append`, `insert`, `toString`...)
+--       đều gắn từ khóa `synchronized` trên đối tượng `this`.
+--     * `StringBuilder`: Hoàn toàn không có `synchronized`.
+--   - Hiệu năng (Performance):
+--     * `StringBuilder` nhanh hơn vì không tốn chi phí lấy/nhả monitor lock ở mỗi
+--       lần gọi `append`.
+--   - Lịch sử ra đời:
+--     * `StringBuffer` có mặt từ Java 1.0; đến Java 5, `StringBuilder` được bổ sung
+--       làm lựa chọn thay thế trực tiếp (drop-in replacement) cho trường hợp phổ
+--       biến nhất là ghép chuỗi trong phạm vi một luồng. [J4][J5]
+--
+-- Ví dụ:
+--   public class Main {
+--       public static void main(String[] args) {
+--           StringBuilder sb = new StringBuilder(32); // chuẩn mực cho biến cục bộ 1 luồng
+--           sb.append("Order#").append(101).append(" - PAID");
+--           System.out.println(sb.toString());
+--
+--           StringBuffer sbuf = new StringBuffer();   // an toàn khi nhiều luồng cùng chia sẻ
+--           sbuf.append("Thread-safe buffer");
+--           System.out.println(sbuf);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Trong hơn 99% trường hợp thực tế, biến xây dựng chuỗi được khai báo làm biến
+--     cục bộ bên trong phương thức (mỗi thread có Stack Frame riêng nên biến cục bộ
+--     không bị chia sẻ giữa các thread) -> LUÔN ưu tiên chọn `StringBuilder`.
+--   - Ngay cả khi JIT Compiler của JVM hiện đại có cơ chế tối ưu Lock Elision (bỏ
+--     khóa nếu phát hiện đối tượng `StringBuffer` không thoát ra khỏi hàm), việc chủ
+--     động dùng `StringBuilder` vẫn là chuẩn mực bắt buộc trong code review. [J4][J5]
+--
+-- =============================================================================
+-- JAVA-25a | Khái niệm immutable và mutable
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Mutable` (khả biến) là đối tượng có thể thay đổi trạng thái hoặc dữ liệu nội bộ
+--   sau khi đã được khởi tạo (như `StringBuilder`, `ArrayList`, `HashMap`,
+--   `java.util.Date`). Ngược lại, `Immutable` (bất biến) là đối tượng KHÔNG THỂ thay
+--   đổi trạng thái sau khi constructor kết thúc; mọi phương thức có vẻ như "sửa đổi"
+--   (`concat`, `replace`, `plusDays`) thực chất đều tạo và trả về một đối tượng MỚI
+--   (như `String`, `Integer`, `BigDecimal`, `LocalDate`, và `record` không chứa thành
+--   phần khả biến). [J2][J6][J7]
+--
+-- Giải thích chi tiết:
+--   - Vì sao `String` trong Java được thiết kế là Immutable?
+--     1. Nền tảng cho String Pool: Nhiều biến cùng trỏ tới một literal `"abc"` trong
+--        Pool; nếu cho phép một biến sửa nội dung chuỗi tại chỗ thì tất cả các biến
+--        khác đang dùng chung chuỗi đó sẽ bị thay đổi ngoài ý muốn.
+--     2. Bảo mật (Security): Chuỗi thường chứa thông tin nhạy cảm như tên file, URL,
+--        địa chỉ mạng, tên class nạp động, thông tin đăng nhập; tính bất biến ngăn
+--        chặn việc dữ liệu bị đánh tráo sau khi đã đi qua bước kiểm tra an ninh.
+--     3. An toàn đa luồng tự nhiên (Thread-safety): Nhiều luồng có thể đọc và chia sẻ
+--        cùng một `String` mà không bao giờ xảy ra race condition hay cần khóa đồng bộ.
+--     4. Tối ưu bộ nhớ đệm mã băm (Hashcode Caching): Vì nội dung không bao giờ đổi,
+--        `String` chỉ tính `hashCode()` một lần đầu tiên rồi lưu vào biến `hash`,
+--        giúp việc dùng `String` làm key trong `HashMap`/`HashSet` cực nhanh và an toàn. [J2]
+--   - 4 quy tắc thiết kế một class Immutable chuẩn (theo Oracle Docs): [J6]
+--     1. Khai báo class là `final` (hoặc chỉ có `private` constructor) để ngăn lớp
+--        con kế thừa và ghi đè làm thay đổi hành vi.
+--     2. Khai báo tất cả các thuộc tính là `private final`.
+--     3. Không cung cấp các phương thức setter hay bất kỳ hàm nào sửa đổi trạng thái.
+--     4. Nếu class có chứa thuộc tính tham chiếu tới đối tượng khả biến (`List`,
+--        mảng, `Date`), BẮT BUỘC phải thực hiện sao chép phòng thủ (defensive copy)
+--        cả lúc nhận vào trong constructor lẫn lúc trả ra ở hàm getter.
+--
+-- Ví dụ thiết kế Immutable chuẩn với `record` (Java 16+) kèm Defensive Copy:
+--   import java.util.*;
+--   public class Main {
+--       public record PeriodRecord(String name, List<String> tags) {
+--           public PeriodRecord {
+--               // Compact constructor trong record: tạo bản sao bất biến
+--               tags = List.copyOf(tags);
+--           }
+--       }
+--       public static void main(String[] args) {
+--           List<String> raw = new ArrayList<>(List.of("java", "backend"));
+--           PeriodRecord p = new PeriodRecord("Q1", raw);
+--           raw.add("hacked");                 // không ảnh hưởng tới p.tags()
+--           System.out.println(p.tags());      // [java, backend]
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy "Shallow Immutability" (Bất biến nông): Nhiều ứng viên nghĩ chỉ cần dùng
+--     `record` hoặc gắn `private final` cho mọi field là đối tượng tự khắc bất biến.
+--     Thực tế, nếu một field của `record` là `int[]` hoặc `ArrayList` mà không tạo
+--     bản sao bất biến (`List.copyOf(...)` / `.clone()`), người gọi bên ngoài vẫn sửa
+--     được phần tử bên trong mảng/list đó! [J6][J7]
+--   - Với `BigDecimal` và `LocalDate`: các hàm như `amount.add(tax)` hay
+--     `date.plusDays(1)` KHÔNG sửa biến `amount` hay `date` ban đầu; nếu quên gán lại
+--     `amount = amount.add(tax);` thì kết quả tính toán sẽ bị bỏ qua.
+--
+-- =============================================================================
+-- JAVA-25b | Khi nào sử dụng StringBuilder
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Ta sử dụng `StringBuilder` khi cần ghép nối hoặc chỉnh sửa chuỗi NHIỀU LẦN liên
+--   tiếp, đặc biệt là nối chuỗi bên trong các vòng lặp (`for`, `while`), hoặc khi
+--   xây dựng chuỗi động qua nhiều nhánh điều kiện `if/else` (ví dụ: lắp ghép câu
+--   truy vấn SQL động, xuất báo cáo CSV, tạo nội dung JSON/HTML/log lớn). [J4]
+--
+-- Giải thích chi tiết cơ chế & hiệu năng:
+--   - Nối chuỗi bằng `+` bên trong vòng lặp (`s = s + item;` lặp $N$ lần):
+--     Vì `String` là bất biến, ở mỗi bước lặp JVM phải cấp phát một mảng/đối tượng
+--     mới và sao chép toàn bộ nội dung chuỗi tích lũy từ đầu sang. Tổng số ký tự phải
+--     chép tăng theo cấp số cộng $1 + 2 + \dots + N \approx O(N^2)$, gây tốn CPU và
+--     tạo ra hàng loạt đối tượng rác trên Heap (GC pressure).
+--   - Nối chuỗi bằng `StringBuilder.append()` trong vòng lặp:
+--     Các ký tự mới được ghi nối tiếp vào mảng bộ đệm `byte[]` sẵn có bên trong một
+--     đối tượng duy nhất; tổng độ phức tạp thời gian cho $N$ lần nối giảm xuống chỉ
+--     còn $O(N)$ (trung bình mỗi lần `append` là $O(1)$ amortized). [J4]
+--   - Nối chuỗi trên MỘT biểu thức đơn lẻ bên ngoài vòng lặp (`"User " + id + " ok"`):
+--     Cứ viết trực tiếp bằng toán tử `+` cho gọn và dễ đọc! Từ Java 9+ (JEP 280),
+--     trình biên dịch `javac` dịch phép nối `+` trên một biểu thức thành lệnh
+--     `invokedynamic` gọi `StringConcatFactory.makeConcatWithConstants`, giúp JVM
+--     tính sẵn độ dài và cấp phát mảng đích một lần, nhanh tương đương hoặc hơn cả
+--     viết `StringBuilder` thủ công. [J1][J8]
+--
+-- Ví dụ:
+--   public class Main {
+--       public static void main(String[] args) {
+--           int n = 5;
+--           // 1. TRONG vòng lặp: luôn khởi tạo StringBuilder ngoài vòng lặp
+--           StringBuilder csv = new StringBuilder(n * 8);
+--           for (int i = 1; i <= n; i++) {
+--               if (i > 1) csv.append(',');
+--               csv.append("item_").append(i);
+--           }
+--           System.out.println(csv.toString()); // item_1,item_2,item_3,item_4,item_5
+--
+--           // 2. NGOÀI vòng lặp (1 biểu thức): dùng trực tiếp +
+--           String msg = "Count=" + n + ", result=" + csv;
+--           System.out.println(msg);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy viết `sb.append("item_" + i)` bên trong vòng lặp: Việc dùng dấu `+` ngay
+--     trong đối số của `append` vẫn làm phát sinh việc nối chuỗi con ở mỗi vòng lặp;
+--     phải tách thành chuỗi lời gọi `sb.append("item_").append(i)`.
+--   - Nếu bài toán chỉ là nối các phần tử của một Collection/mảng bằng ký tự phân
+--     cách, hãy ưu tiên dùng các API bậc cao có sẵn như `String.join(", ", list)`,
+--     `StringJoiner`, hoặc `stream.collect(Collectors.joining(", "))` (bên dưới JDK
+--     đã tự dùng `StringBuilder` tối ưu).
+--
+-- =============================================================================
+-- JAVA-26 | Đặc điểm của CTDL Array - Fixed Length
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Array (mảng) trong Java là một đối tượng đặc biệt dùng để lưu trữ một tập hợp các
+--   phần tử CÙNG KIỂU dữ liệu trên một vùng nhớ liên tiếp, có kích thước CỐ ĐỊNH
+--   (Fixed Length) được ấn định ngay từ thời điểm cấp phát và không thể thay đổi
+--   (`length` là thuộc tính `final`) trong suốt vòng đời của mảng đó. [J9]
+--
+-- Giải thích chi tiết 4 đặc điểm cốt lõi:
+--   1. Kích thước cố định (Fixed Length):
+--      Khi tạo mảng `new int[10]`, kích thước `10` là cố định. Muốn "thêm" phần tử
+--      vượt quá kích thước này, bắt buộc phải cấp phát một mảng mới lớn hơn rồi sao
+--      chép dữ liệu từ mảng cũ sang (`Arrays.copyOf` hoặc `System.arraycopy`).
+--   2. Truy cập ngẫu nhiên theo chỉ số $O(1)$ (Random Access):
+--      Vì các phần tử nằm liền kề nhau và có cùng kích thước, địa chỉ ô nhớ của phần
+--      tử `arr[i]` được tính tức thì bằng công thức `base_address + i * element_size`,
+--      đồng thời cực kỳ thân thiện với bộ nhớ đệm CPU (CPU cache locality).
+--   3. Hỗ trợ trực tiếp cả Primitive lẫn Reference:
+--      Mảng nguyên thủy `int[]` lưu trực tiếp các số `int` 4-byte sát nhau mà không
+--      tốn chi phí đóng gói (boxing) và object header cho từng phần tử như
+--      `List<Integer>`; còn mảng đối tượng `String[]` lưu liên tiếp các con trỏ tham
+--      chiếu trỏ tới các đối tượng trên Heap.
+--   4. Kiểm tra chỉ số lúc chạy (Runtime Bounds Checking):
+--      Mọi truy cập `arr[i]` với `i < 0` hoặc `i >= arr.length` đều được JVM kiểm tra
+--      và ném ngay `ArrayIndexOutOfBoundsException` (tránh lỗi tràn bộ đệm như C/C++). [J9]
+--
+-- Ví dụ:
+--   import java.util.Arrays;
+--   public class Main {
+--       public static void main(String[] args) {
+--           int[] a = new int[3];                // mặc định [0, 0, 0], length = 3
+--           a[0] = 10; a[1] = 20; a[2] = 30;
+--           int[] bigger = Arrays.copyOf(a, 5);  // tạo mảng mới [10, 20, 30, 0, 0]
+--           System.out.println(Arrays.toString(bigger));
+--
+--           // Bẫy tính hiệp biến (Covariance) của mảng: String[] là kiểu con của Object[]
+--           Object[] objs = new String[2];
+--           objs[0] = "OK";
+--           try {
+--               objs[1] = 123;                   // ném ArrayStoreException lúc runtime!
+--           } catch (ArrayStoreException e) {
+--               System.out.println("Caught: " + e.getClass().getSimpleName());
+--           }
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Phân biệt cú pháp lấy độ dài: `arr.length` (thuộc tính của mảng), `str.length()`
+--     (phương thức của `String`), và `col.size()` (phương thức của `Collection`).
+--   - Bẫy Covariance và `ArrayStoreException`: Trong Java, mảng có tính hiệp biến
+--     (nếu `Sub` kế thừa `Super` thì `Sub[]` được coi là kiểu con của `Super[]`). Do
+--     đó `Object[] objs = new String[2];` biên dịch hợp lệ, nhưng lúc chạy nếu gán
+--     `objs[1] = 123;` JVM sẽ kiểm tra kiểu thực tế của mảng và ném
+--     `ArrayStoreException` (ngược lại, Generics là bất biến nên `List<Object> l = new ArrayList<String>()`
+--     bị chặn ngay lúc compile). [J9]
+--   - Mảng không ghi đè `equals()`, `hashCode()` và `toString()` của `Object` (gọi
+--     `arr.toString()` chỉ in ra chuỗi kiểu `[I@7ad041f3`). Luôn dùng các hàm tiện
+--     ích trong `java.util.Arrays`: `Arrays.equals(a, b)`, `Arrays.toString(a)` (hoặc
+--     `deepEquals` / `deepToString` cho mảng nhiều chiều).
+--
+-- =============================================================================
+-- JAVA-27 | Phân biệt Stack Queue DeQueue
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Stack` (Ngăn xếp) hoạt động theo nguyên tắc **LIFO** (Last-In, First-Out - vào
+--   sau ra trước, chỉ thêm và lấy ở đỉnh stack). `Queue` (Hàng đợi) hoạt động theo
+--   nguyên tắc **FIFO** (First-In, First-Out - vào trước ra trước, thêm ở cuối và
+--   lấy ra ở đầu). Còn `Deque` (viết tắt của Double-Ended Queue, phát âm là "deck",
+--   nhiều tài liệu hay viết nhầm thành DeQueue) là **hàng đợi hai đầu** trong
+--   `java.util.Deque`, cho phép thêm, xóa và đọc phần tử ở CẢ HAI ĐẦU với thời gian
+--   $O(1)$, nhờ đó có thể dùng làm cả Queue lẫn Stack. [J10]
+--
+-- Giải thích chi tiết / Phân biệt nhóm phương thức:
+--   - `Queue<E>` (FIFO - thêm vào Tail, lấy ra từ Head): [J10]
+--     * Nhóm trả giá trị đặc biệt (`false`/`null`) khi đầy/rỗng: `offer(e)` (thêm),
+--       `poll()` (lấy và xóa đầu), `peek()` (xem đầu).
+--     * Nhóm ném ngoại lệ khi thất bại: `add(e)`, `remove()`, `element()`.
+--   - `Deque<E>` (Hàng đợi 2 đầu - kế thừa `Queue<E>`): [J10]
+--     * Ở đầu (First/Head): `offerFirst(e)`, `pollFirst()`, `peekFirst()`,
+--       `addFirst(e)`, `removeFirst()`, `getFirst()`.
+--     * Ở cuối (Last/Tail): `offerLast(e)`, `pollLast()`, `peekLast()`,
+--       `addLast(e)`, `removeLast()`, `getLast()`.
+--   - Dùng `Deque<E>` như một `Stack` (LIFO):
+--     * `push(e)` tương đương `addFirst(e)`
+--     * `pop()` tương đương `removeFirst()`
+--     * `peek()` tương đương `peekFirst()`
+--
+-- Ví dụ:
+--   import java.util.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           // 1. Dùng ArrayDeque làm Stack (LIFO) - chuẩn khuyến nghị thay cho java.util.Stack
+--           Deque<String> stack = new ArrayDeque<>();
+--           stack.push("Trang 1"); stack.push("Trang 2");
+--           System.out.println("Stack pop: " + stack.pop());   // Trang 2
+--
+--           // 2. Dùng ArrayDeque làm Queue (FIFO)
+--           Queue<String> queue = new ArrayDeque<>();
+--           queue.offer("Task A"); queue.offer("Task B");
+--           System.out.println("Queue poll: " + queue.poll()); // Task A
+--
+--           // 3. Dùng Deque thao tác cả 2 đầu (ví dụ bài toán Sliding Window / Palindrome)
+--           Deque<Integer> dq = new ArrayDeque<>();
+--           dq.offerFirst(10); dq.offerLast(20);
+--           System.out.println(dq.peekFirst() + " - " + dq.peekLast()); // 10 - 20
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Tại sao KHÔNG nên dùng lớp `java.util.Stack`?
+--     Lớp `Stack` có từ Java 1.0 kế thừa trực tiếp từ `Vector`: (1) Mọi phương thức
+--     đều bị gắn `synchronized` gây chậm không cần thiết trong đơn luồng, và (2) Vì
+--     kế thừa `Vector` nên nó phơi bày cả các hàm `get(index)`, `add(index, e)` cho
+--     phép chọc vào giữa ngăn xếp, phá vỡ tính đóng gói của cấu trúc LIFO. Javadoc
+--     chính thức của JDK khuyến nghị luôn dùng `Deque<E> stack = new ArrayDeque<>()`. [J10]
+--   - Lưu ý về `null`: `ArrayDeque` cấm chèn phần tử `null` (gọi `addFirst(null)` sẽ
+--     ném `NullPointerException`), bởi vì các hàm `poll()` và `peek()` dùng giá trị
+--     trả về `null` để biểu thị trạng thái hàng đợi đang rỗng.
+--   - Biến thể đặc biệt của Queue: `PriorityQueue<E>` KHÔNG lấy ra theo thứ tự vào
+--     trước ra trước (FIFO), mà luôn rút phần tử có độ ưu tiên cao nhất (nhỏ nhất
+--     theo `Comparable`/`Comparator` trên cấu trúc Binary Heap) với độ phức tạp $O(\log n)$.
+--
+-- =============================================================================
+-- JAVA-28 | Phân biệt Array và ArrayList và LinkedList
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Array` (`T[]`, `int[]`) là cấu trúc mảng tĩnh cấp ngôn ngữ với kích thước cố
+--   định, lưu được cả kiểu nguyên thủy lẫn đối tượng. `ArrayList<E>` là lớp cài đặt
+--   `List` dựa trên một mảng động (`Object[] elementData`) tự động cấp phát mảng mới
+--   lớn hơn (gấp 1.5 lần trong OpenJDK) khi đầy và chỉ lưu đối tượng. Còn
+--   `LinkedList<E>` cài đặt cả `List` lẫn `Deque` dựa trên cấu trúc danh sách liên
+--   kết đôi (doubly-linked list) gồm các nút `Node<E>` nối với nhau bằng con trỏ
+--   `prev`/`next`, không cần vùng nhớ liên tiếp nhưng tốn thêm bộ nhớ cho từng nút và
+--   truy cập theo chỉ số chậm. [J9][J11][J12]
+--
+-- Giải thích chi tiết / Bảng so sánh:
+--   - Cấu trúc lưu trữ bên dưới:
+--     * `Array`: Một khối nhớ liên tiếp duy nhất có độ dài cố định.
+--     * `ArrayList`: Mảng liên tiếp `Object[]` bên trong; khi vượt sức chứa sẽ tạo
+--       mảng mới và copy sang.
+--     * `LinkedList`: Các đối tượng `Node<E> { E item; Node<E> next; Node<E> prev; }`
+--       nằm rải rác trên Heap và liên kết qua tham chiếu.
+--   - Kích thước:
+--     * `Array`: Cố định từ lúc khởi tạo (`arr.length`).
+--     * `ArrayList` & `LinkedList`: Co giãn động theo số phần tử thực tế (`list.size()`).
+--   - Kiểu dữ liệu phần tử:
+--     * `Array`: Hỗ trợ trực tiếp cả primitive (`int[]`, `double[]`) lẫn reference.
+--     * `ArrayList` & `LinkedList`: Chỉ hỗ trợ kiểu đối tượng (Generics); nếu dùng
+--       với kiểu nguyên thủy phải thông qua lớp Wrapper (`ArrayList<Integer>`) kèm
+--       chi phí autoboxing.
+--   - Chi phí bộ nhớ trên mỗi phần tử:
+--     * `int[]`: Rất tiết kiệm, đúng 4 byte cho mỗi số `int`.
+--     * `ArrayList<Integer>`: Tốn 1 ô tham chiếu trong mảng + đối tượng `Integer`.
+--     * `LinkedList<Integer>`: Tốn nặng nhất vì mỗi phần tử ngoài đối tượng `Integer`
+--       còn phải cấp phát thêm một đối tượng `Node` (gồm object header + 3 tham chiếu
+--       `item`, `next`, `prev`). [J11][J12]
+--
+-- Ví dụ:
+--   import java.util.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           int[] arr = {1, 2, 3};                                 // mảng nguyên thủy
+--           List<Integer> arrayList = new ArrayList<>(List.of(1, 2, 3));
+--           LinkedList<Integer> linkedList = new LinkedList<>(arrayList);
+--           arrayList.add(4);                                      // tự động mở rộng
+--           linkedList.addFirst(0);                                // thao tác đầu danh sách (Deque)
+--           System.out.println(arr.length + " | " + arrayList + " | " + linkedList);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Cả `ArrayList` và `LinkedList` đều KHÔNG thread-safe.
+--   - Cơ chế Fail-Fast Iterator: Khi đang duyệt `ArrayList` hoặc `LinkedList` bằng
+--     vòng lặp `for-each` (hoặc `Iterator`) mà ta gọi trực tiếp `list.remove(...)`
+--     hay `list.add(...)` làm thay đổi biến đếm `modCount`, bộ duyệt sẽ phát hiện và
+--     ném ngay `ConcurrentModificationException`. Muốn xóa an toàn khi đang duyệt,
+--     phải dùng `iterator.remove()` hoặc gọn hơn là `list.removeIf(predicate)`. [J11][J12]
+--
+-- =============================================================================
+-- JAVA-29 | Khi nào nên khởi tạo capacity
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Ta nên chủ động truyền sức chứa ban đầu (`initialCapacity`) khi khởi tạo các cấu
+--   trúc dữ liệu dựa trên mảng động như `ArrayList`, `HashMap`, `HashSet`,
+--   `StringBuilder`, `ArrayDeque` khi BIẾT TRƯỚC hoặc ước lượng được khá sát số lượng
+--   phần tử sẽ nạp vào. Việc này giúp cấp phát mảng đệm đủ lớn ngay từ lần đầu, loại
+--   bỏ hoàn toàn chi phí cấp phát lại vùng nhớ (reallocation), sao chép mảng
+--   (`Arrays.copyOf`) hoặc băm lại toàn bộ bảng băm (`rehash`) nhiều lần. [J4][J11][J18]
+--
+-- Giải thích chi tiết cơ chế mở rộng mặc định trong OpenJDK 17:
+--   - `ArrayList`:
+--     * Gọi `new ArrayList<>()` ban đầu trỏ tới mảng rỗng; ở lần `add` đầu tiên mới
+--       cấp phát mảng có capacity mặc định = `10`.
+--     * Mỗi khi mảng đầy, nó phải tạo mảng mới có kích thước gấp **1.5 lần**
+--       (`newCapacity = oldCapacity + (oldCapacity >> 1)`) và copy toàn bộ phần tử cũ
+--       sang mảng mới. [J11]
+--   - `StringBuilder`:
+--     * Mặc định `new StringBuilder()` có capacity = `16` ký tự; khi tràn sẽ mở rộng
+--       lên `2 * oldCapacity + 2` và sao chép lại chuỗi. [J4]
+--   - `HashMap` / `HashSet`:
+--     * Mặc định `new HashMap<>()` có capacity = `16` (luôn là lũy thừa của 2) và hệ
+--       số tải `loadFactor = 0.75f`, tức ngưỡng nở bảng là `threshold = 16 * 0.75 = 12`.
+--     * Ngay khi thêm phần tử thứ 13 (vượt `threshold`), `HashMap` phải nhân đôi
+--       bảng lên `32` bucket và tính lại vị trí bucket (rehash) cho các phần tử. [J18]
+--
+-- Ví dụ cách tính đúng `initialCapacity` cho cả `ArrayList` và `HashMap`:
+--   import java.util.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           int expectedItems = 1000;
+--           // 1. ArrayList: truyền thẳng số phần tử dự kiến
+--           List<Integer> list = new ArrayList<>(expectedItems);
+--
+--           // 2. HashMap (Java 17): phải chia cho loadFactor (0.75) để không bị rehash!
+--           // Nếu truyền new HashMap<>(1000), capacity làm tròn lên 1024, threshold = 1024 * 0.75 = 768
+--           // -> đến phần tử thứ 769 bảng vẫn bị nhân đôi lên 2048!
+--           int mapCapacity = (int) Math.ceil(expectedItems / 0.75) + 1;
+--           Map<Integer, String> map = new HashMap<>(mapCapacity);
+--           for (int i = 0; i < expectedItems; i++) {
+--               list.add(i);
+--               map.put(i, "v" + i);
+--           }
+--           System.out.println("Size: " + list.size() + ", " + map.size());
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy kinh điển với `HashMap(initialCapacity)`: Rất nhiều lập trình viên muốn
+--     lưu 100 phần tử vào `HashMap` liền viết `new HashMap<>(100)`. Vì `100` được làm
+--     tròn lên lũy thừa của 2 là `128`, nên `threshold = 128 * 0.75 = 96`. Khi put
+--     đến phần tử thứ 97, `HashMap` VẪN bị resize! Công thức chuẩn trên Java 17 là
+--     `(int) Math.ceil(expectedSize / 0.75) + 1` (từ Java 19+ JDK đã bổ sung hàm
+--     `HashMap.newHashMap(expectedMappings)` để tính hộ công thức này).
+--   - Bẫy đặt capacity quá lớn: Không truyền `initialCapacity` khổng lồ một cách cảm
+--     tính cho hàng loạt list chỉ chứa vài phần tử vì sẽ gây lãng phí bộ nhớ Heap.
+--   - Phân biệt `capacity` (sức chứa mảng đệm hiện tại) và `size()` (số phần tử thực
+--     tế đang có): sau khi gọi `new ArrayList<>(100)`, `list.size()` vẫn bằng `0`!
+--
+-- =============================================================================
+-- JAVA-30 | So sánh tốc độ xử lý thêm sửa xóa của ArrayList và LinkedList
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Xét theo độ phức tạp thuật toán lý thuyết (Big-O) và thực tế phần cứng:
+--   - Truy cập / Sửa theo index (`get(i)`, `set(i, e)`): `ArrayList` đạt $O(1)$ tuyệt
+--     đối; còn `LinkedList` mất $O(n)$ vì phải duyệt tuần tự qua các nút từ đầu hoặc
+--     cuối danh sách.
+--   - Thêm / Xóa ở cuối danh sách: `ArrayList` đạt $O(1)$ trung bình (amortized, chỉ
+--     mất $O(n)$ khi mảng đầy phải copy sang mảng mới); `LinkedList` đạt $O(1)$ nhưng
+--     tốn chi phí cấp phát đối tượng `Node` mới trên Heap.
+--   - Thêm / Xóa ở đầu danh sách (`index = 0`): `ArrayList` mất $O(n)$ do phải dịch
+--     chuyển toàn bộ phần tử còn lại; `LinkedList` đạt $O(1)$ (cập nhật con trỏ `first`).
+--   - Thêm / Xóa ở vị trí bất kỳ ở giữa (`add(i, e)`, `remove(i)`): **Cả hai đều là
+--     $O(n)$!** `ArrayList` tốn $O(n)$ để dịch mảng bằng `System.arraycopy`, còn
+--     `LinkedList` tốn $O(n)$ để đi bộ tìm tới vị trí thứ `i` (chỉ khi đã đứng sẵn ở
+--     nút đó thông qua `ListIterator` thì thao tác chèn/xóa nút của `LinkedList` mới
+--     là $O(1)$). [J11][J12]
+--
+-- Giải thích chi tiết dưới góc độ kiến trúc phần cứng (điểm cộng lớn khi phỏng vấn):
+--   - Tại sao trong thực tế `ArrayList` hầu như LUÔN NHANH HƠN `LinkedList`, kể cả
+--     khi chèn/xóa ở giữa với danh sách hàng nghìn phần tử?
+--     1. CPU Cache Locality (Tính cục bộ bộ nhớ đệm): Mảng `Object[]` của `ArrayList`
+--        nằm liền kề trên RAM nên CPU prefetcher nạp sẵn cả dòng cache (cache line);
+--        ngược lại mỗi `Node` của `LinkedList` là một object nằm rải rác khắp Heap,
+--        mỗi bước nhảy `node = node.next` đều gây ra Cache Miss buộc CPU phải chờ đọc
+--        từ RAM (chậm hơn L1/L2 cache hàng chục đến hàng trăm lần).
+--     2. Sức mạnh của `System.arraycopy`: Việc dịch mảng trong `ArrayList` được JVM
+--        thực hiện bằng hàm native/intrinsic copy nguyên khối nhớ liên tiếp bằng tập
+--        lệnh vector (SIMD) của CPU nên tốc độ cực nhanh.
+--     3. Ngay cả khi cần hàng đợi thêm/xóa 2 đầu $O(1)$, cấu trúc mảng vòng
+--        `ArrayDeque` cũng vượt trội hơn `LinkedList` cả về tốc độ lẫn bộ nhớ.
+--
+-- Ví dụ:
+--   import java.util.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           List<Integer> arrList = new ArrayList<>();
+--           LinkedList<Integer> lnkList = new LinkedList<>();
+--           for (int i = 0; i < 5; i++) { arrList.add(i); lnkList.add(i); }
+--           System.out.println("Get O(1) vs O(n): " + arrList.get(3) + " / " + lnkList.get(3));
+--           lnkList.addFirst(99); // O(1) ở đầu của LinkedList (Deque)
+--           arrList.set(2, 88);   // O(1) cập nhật tại index của ArrayList
+--           System.out.println(arrList + " | " + lnkList);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Đừng trả lời máy móc kiểu sách cũ "Thêm/xóa dùng `LinkedList`, đọc dùng
+--     `ArrayList`": hãy giải thích rõ việc `add(index, element)` trên `LinkedList`
+--     vẫn phải duyệt $O(n)$ bước để tìm vị trí, cộng thêm hiện tượng CPU Cache Miss
+--     khiến `ArrayList` là lựa chọn mặc định trong 99% bài toán `List`.
+--   - Bẫy hiệu năng nghiêm trọng: Tuyệt đối KHÔNG duyệt `LinkedList` bằng vòng lặp
+--     chỉ số `for (int i = 0; i < list.size(); i++) { list.get(i); }` vì mỗi lần gọi
+--     `get(i)` lại phải đi bộ từ đầu, biến vòng lặp đơn thành độ phức tạp $O(n^2)$!
+--     Phải duyệt bằng `for-each` hoặc `Iterator`.
+--   - Xóa theo giá trị `remove(Object o)`: Cả `ArrayList` lẫn `LinkedList` đều phải
+--     tìm kiếm tuần tự bằng `equals()` từ đầu danh sách nên đều có độ phức tạp $O(n)$.
+--
+-- =============================================================================
+-- JAVA-31 | Cấu trúc dữ liệu Set dùng để làm gì
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `java.util.Set<E>` là một Collection mô hình hóa khái niệm tập hợp trong toán
+--   học, với đặc trưng quan trọng nhất là **không chứa các phần tử trùng lặp**
+--   (không có cặp phần tử `e1, e2` nào mà `Objects.equals(e1, e2)` trả về `true`).
+--   Trong thực tế, `Set` được dùng cho 3 mục đích chính: (1) Loại bỏ dữ liệu trùng
+--   lặp (deduplication), (2) Kiểm tra nhanh một phần tử có tồn tại trong tập hợp hay
+--   không (`contains` chỉ mất $O(1)$ với `HashSet` hoặc $O(\log n)$ với `TreeSet`,
+--   thay vì $O(n)$ trên `List`), và (3) Thực hiện các phép toán tập hợp như Hợp
+--   (Union), Giao (Intersection), Hiệu (Difference). [J13]
+--
+-- Giải thích chi tiết các thao tác đặc trưng của `Set`:
+--   - Loại bỏ trùng lặp: Khởi tạo `new HashSet<>(list)` hoặc `new LinkedHashSet<>(list)`
+--     (nếu muốn giữ nguyên thứ tự xuất hiện đầu tiên của các phần tử).
+--   - Các phép toán đại số tập hợp trên hai tập `s1` và `s2`: [J13]
+--     * Hợp (Union): `s1.addAll(s2)` -> gộp tất cả phần tử của `s2` vào `s1`.
+--     * Giao (Intersection): `s1.retainAll(s2)` -> chỉ giữ lại trong `s1` những phần
+--       tử đồng thời có mặt trong `s2`.
+--     * Hiệu (Difference): `s1.removeAll(s2)` -> xóa khỏi `s1` mọi phần tử có trong `s2`.
+--     * Kiểm tra tập con (Subset): `s1.containsAll(s2)` -> kiểm tra mọi phần tử của
+--       `s2` có nằm trong `s1` không.
+--
+-- Ví dụ:
+--   import java.util.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           // 1. Loại trùng nhưng vẫn giữ thứ tự xuất hiện bằng LinkedHashSet
+--           List<String> raw = List.of("A", "B", "A", "C", "B");
+--           Set<String> unique = new LinkedHashSet<>(raw);
+--           System.out.println("Unique: " + unique); // [A, B, C]
+--
+--           // 2. Phép toán tập hợp: tìm quyền chung giữa 2 nhóm
+--           Set<String> roleA = new HashSet<>(Set.of("READ", "WRITE", "DELETE"));
+--           Set<String> roleB = Set.of("READ", "EXPORT");
+--           roleA.retainAll(roleB);                  // Giao (Intersection)
+--           System.out.println("Common: " + roleA);  // [READ]
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - `Set` không quản lý phần tử theo vị trí chỉ mục nên KHÔNG có phương thức
+--     `get(int index)` hay `set(int index, E e)`.
+--   - Phương thức `set.add(e)` trả về `boolean`: trả về `true` nếu phần tử chưa có và
+--     được thêm mới thành công; trả về `false` (chứ không ném lỗi) nếu phần tử đã tồn
+--     tại và tập hợp giữ nguyên không đổi.
+--   - Bẫy với `Set.of(...)` (Unmodifiable Set từ Java 9+): Khác với `HashSet.add` âm
+--     thầm bỏ qua phần tử trùng, nếu bạn truyền phần tử trùng lặp vào thẳng hàm tạo
+--     tĩnh như `Set.of("A", "A")` thì nó sẽ ném ngay `IllegalArgumentException` lúc
+--     chạy (và truyền `null` vào `Set.of` hay `Set.copyOf` sẽ ném `NullPointerException`). [J13]
+--
+-- =============================================================================
+-- JAVA-32 | Làm sao để các đối tượng trong Set không trùng nhau
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Cơ chế phát hiện và ngăn chặn trùng lặp phụ thuộc vào loại `Set` đang sử dụng:
+--   1. Với `HashSet` và `LinkedHashSet` (hoạt động dựa trên bảng băm): Lớp của đối
+--      tượng BẮT BUỘC phải ghi đè (`@Override`) ĐỒNG THỜI cả hai phương thức
+--      `hashCode()` và `equals(Object)` theo đúng hợp đồng của `java.lang.Object`.
+--      Khi thêm phần tử, `HashSet` gọi `hashCode()` trước để định vị ô nhớ (bucket),
+--      sau đó mới dùng `equals()` đối chiếu với các phần tử đang có trong bucket đó. [J14][J15]
+--   2. Với `TreeSet` (hoạt động dựa trên cây đỏ-đen sắp xếp): Tính duy nhất KHÔNG
+--      dựa vào `equals()`/`hashCode()` mà được quyết định hoàn toàn bởi kết quả so
+--      sánh `compareTo(other) == 0` (của `Comparable`) hoặc `compare(a, b) == 0`
+--      (của `Comparator`). [J15][J16]
+--
+-- Giải thích chi tiết Hợp đồng `equals()` và `hashCode()` (JLS / Javadoc `Object`): [J14]
+--   - Quy tắc 1: Nếu hai đối tượng bằng nhau theo `a.equals(b) == true`, thì mã băm
+--     của chúng BẮT BUỘC phải bằng nhau (`a.hashCode() == b.hashCode()`).
+--   - Quy tắc 2: Ngược lại, nếu `a.hashCode() == b.hashCode()`, hai đối tượng KHÔNG
+--     nhất thiết phải `equals == true` (trường hợp này gọi là va chạm băm - hash
+--     collision; `HashSet` sẽ duyệt các phần tử trong cùng bucket đó và gọi
+--     `equals()` để phân biệt).
+--   - Điều gì xảy ra nếu chỉ override `equals()` mà quên override `hashCode()`?
+--     Khi đó `hashCode()` mặc định của `Object` trả về các giá trị khác nhau cho hai
+--     instance khác nhau dù nội dung bên trong giống hệt nhau -> chúng rơi vào 2
+--     bucket khác nhau nên `HashSet` không hề gọi tới `equals()` và lưu trùng cả hai!
+--
+-- Ví dụ:
+--   import java.util.*;
+--   public class Main {
+--       static final class Employee {
+--           private final int id;
+--           private final String name;
+--           Employee(int id, String name) { this.id = id; this.name = name; }
+--           @Override
+--           public boolean equals(Object o) {
+--               if (this == o) return true;
+--               if (!(o instanceof Employee that)) return false; // Pattern matching Java 16+
+--               return this.id == that.id && Objects.equals(this.name, that.name);
+--           }
+--           @Override
+--           public int hashCode() {
+--               return Objects.hash(id, name);
+--           }
+--           @Override public String toString() { return id + ":" + name; }
+--       }
+--       public static void main(String[] args) {
+--           Set<Employee> set = new HashSet<>();
+--           set.add(new Employee(1, "An"));
+--           set.add(new Employee(1, "An")); // bị chặn vì cùng hashCode và equals == true
+--           System.out.println("Size = " + set.size() + " -> " + set); // Size = 1 -> [1:An]
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy sửa thuộc tính của đối tượng sau khi đã đưa vào `HashSet` (Mutable element
+--     in Set): Nếu các trường dùng để tính `hashCode()` bị sửa giá trị sau khi đã
+--     `set.add(emp)`, mã băm mới của `emp` sẽ lệch khỏi vị trí bucket lúc nó được
+--     đưa vào. Hậu quả: gọi `set.contains(emp)` hay `set.remove(emp)` sẽ tìm sang
+--     bucket mới và trả về `false` (không xóa được, gây rò rỉ dữ liệu), thậm chí gọi
+--     `set.add(emp)` lần nữa sẽ chèn thêm một bản sao trùng lặp! Vì vậy, luôn dùng
+--     các trường bất biến (`final`) để tính `equals`/`hashCode`, hoặc dùng `record`
+--     trong Java 17 (tự động sinh sẵn `equals` và `hashCode` chuẩn xác trên các
+--     thành phần `final`). [J7][J14]
+--
+-- =============================================================================
+-- JAVA-33 | Phân biệt HashSet, LinkedHashSet, TreeSet
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Cả ba lớp đều cài đặt giao diện `Set<E>` (đảm bảo không có phần tử trùng lặp),
+--   nhưng khác nhau ở cấu trúc dữ liệu nền tảng, quy tắc thứ tự duyệt và hiệu năng:
+--   1. `HashSet<E>`: Dựa trên `HashMap`; **không đảm bảo thứ tự** phần tử khi duyệt;
+--      tốc độ thêm/xóa/tìm kiếm nhanh nhất đạt $O(1)$ trung bình; cho phép tối đa 1
+--      phần tử `null`.
+--   2. `LinkedHashSet<E>`: Kế thừa `HashSet` nhưng bên dưới dựa trên `LinkedHashMap`
+--      (bảng băm kết hợp danh sách liên kết đôi nối qua các entry); **giữ nguyên thứ
+--      tự chèn** (insertion-order); tốc độ vẫn đạt $O(1)$ (chỉ chậm hơn `HashSet` một
+--      chút do chi phí cập nhật liên kết đôi); cho phép 1 phần tử `null`.
+--   3. `TreeSet<E>`: Cài đặt `NavigableSet` dựa trên `TreeMap` (cây nhị phân tìm kiếm
+--      tự cân bằng Red-Black Tree); tự động **sắp xếp phần tử** theo thứ tự tự nhiên
+--      (`Comparable`) hoặc theo `Comparator`; độ phức tạp `add/remove/contains` là
+--      $O(\log n)$; **không cho phép `null`** khi dùng thứ tự tự nhiên. [J15]
+--
+-- Giải thích chi tiết / Bảng so sánh:
+--   - Cấu trúc bên dưới:
+--     * `HashSet` -> `HashMap<E, Object>` (value là một đối tượng giả `PRESENT`).
+--     * `LinkedHashSet` -> `LinkedHashMap<E, Object>` (có con trỏ `before`/`after`).
+--     * `TreeSet` -> `TreeMap<E, Object>` (Cây Đỏ-Đen tự cân bằng).
+--   - Khi nào nên chọn loại nào?
+--     * Chọn `HashSet` làm mặc định trong đa số bài toán chỉ cần kiểm tra tồn tại
+--       hoặc khử trùng vì nhanh nhất và tốn ít bộ nhớ nhất.
+--     * Chọn `LinkedHashSet` khi cần khử trùng nhưng kết quả trả ra phải giữ đúng
+--       thứ tự xuất hiện ban đầu.
+--     * Chọn `TreeSet` khi cần tập hợp luôn ở trạng thái sắp xếp hoặc cần các truy
+--       vấn theo khoảng giá trị (`first()`, `last()`, `floor(x)`, `ceiling(x)`,
+--       `headSet(to)`, `tailSet(from)`, `subSet(from, to)`). [J15]
+--
+-- Ví dụ đối chiếu trực tiếp:
+--   import java.util.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           List<Integer> input = List.of(30, 10, 20, 10);
+--           Set<Integer> hashSet   = new HashSet<>(input);
+--           Set<Integer> linkedSet = new LinkedHashSet<>(input);
+--           NavigableSet<Integer> treeSet = new TreeSet<>(input);
+--           System.out.println("HashSet (không thứ tự):  " + hashSet);
+--           System.out.println("LinkedHashSet (thứ tự): " + linkedSet); // [30, 10, 20]
+--           System.out.println("TreeSet (tăng dần):     " + treeSet);   // [10, 20, 30]
+--           System.out.println("TreeSet floor(25):      " + treeSet.floor(25)); // 20
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy `null` trên `TreeSet`: Gọi `treeSet.add(null)` với thứ tự tự nhiên sẽ ném
+--     ngay `NullPointerException` (vì nó phải gọi `compareTo`), trong khi `HashSet`
+--     và `LinkedHashSet` nhận 1 phần tử `null` bình thường.
+--   - Bẫy `Comparator` không nhất quán với `equals` trên `TreeSet`: Nếu khởi tạo
+--     `new TreeSet<>(Comparator.comparingInt(User::age))`, khi thêm 2 đối tượng
+--     `User(1, "An", 25)` và `User(2, "Bình", 25)` có cùng tuổi 25, hàm `compare` trả
+--     về `0` nên `TreeSet` coi hai người này là trùng nhau và bỏ qua người thứ hai dù
+--     `equals()` trả về `false`!
+--
+-- =============================================================================
+-- JAVA-34 | Phân biệt, cách sử dụng Comparable, Comparator
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Comparable<T>` (thuộc gói `java.lang`) là interface định nghĩa phương thức
+--   `int compareTo(T o)`, được chính lớp đối tượng `implements` bên trong nó để thiết
+--   lập **thứ tự tự nhiên mặc định và duy nhất** (natural ordering) cho kiểu dữ liệu
+--   đó. Ngược lại, `Comparator<T>` (thuộc gói `java.util`) là một functional
+--   interface định nghĩa phương thức `int compare(T o1, T o2)`, được viết **tách rời**
+--   bên ngoài lớp dữ liệu nhằm cung cấp **nhiều tiêu chí sắp xếp linh hoạt** khác
+--   nhau (sắp theo giá, theo tên, tăng/giảm dần) hoặc để sắp xếp các class của thư
+--   viện bên thứ ba mà ta không thể sửa mã nguồn. [J16]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   - Quy ước giá trị trả về của `a.compareTo(b)` và `compare(a, b)`:
+--     * `< 0` (số nguyên âm): `a` đứng TRƯỚC (nhỏ hơn) `b`.
+--     * `== 0`: `a` và `b` có thứ tự ngang bằng nhau.
+--     * `> 0` (số nguyên dương): `a` đứng SAU (lớn hơn) `b`.
+--   - Bảng đối chiếu nhanh:
+--     * Gói & Phương thức: `java.lang.Comparable` -> `compareTo(T o)` (1 tham số) vs
+--       `java.util.Comparator` -> `compare(T o1, T o2)` (2 tham số).
+--     * Vị trí cài đặt: `Comparable` viết ngay trong class cần sắp xếp; `Comparator`
+--       tách riêng hoặc truyền trực tiếp bằng Lambda / Method Reference.
+--     * Số cách sắp xếp: `Comparable` chỉ cho 1 cách mặc định; `Comparator` tạo được
+--       vô số bộ tiêu chí kết hợp qua `Comparator.comparing(...)`, `.thenComparing(...)`,
+--       `.reversed()`. [J16]
+--
+-- Ví dụ sử dụng chuẩn trên Java 17:
+--   import java.util.*;
+--   public class Main {
+--       record Product(String name, int price) implements Comparable<Product> {
+--           @Override
+--           public int compareTo(Product other) {
+--               // Thứ tự tự nhiên: tăng dần theo price, dùng Integer.compare tránh tràn số!
+--               return Integer.compare(this.price, other.price);
+--           }
+--       }
+--       public static void main(String[] args) {
+--           List<Product> list = new ArrayList<>(List.of(
+--               new Product("Mouse", 200),
+--               new Product("Keyboard", 500),
+--               new Product("Adapter", 200)
+--           ));
+--           Collections.sort(list); // dùng Comparable (thứ tự tự nhiên)
+--           System.out.println("Theo Comparable: " + list);
+--
+--           // Dùng Comparator hiện đại: giá giảm dần, nếu bằng giá thì tên tăng dần
+--           Comparator<Product> byPriceDescThenName = Comparator
+--               .comparingInt(Product::price).reversed()
+--               .thenComparing(Product::name);
+--           list.sort(byPriceDescThenName);
+--           System.out.println("Theo Comparator: " + list);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - BẪY TRÀN SỐ NGUYÊN (Integer Overflow) khi viết `return a.price - b.price;`:
+--     Tuyệt đối KHÔNG dùng phép trừ hai số nguyên để trả về kết quả so sánh nếu miền
+--     giá trị có thể âm hoặc lớn! Ví dụ `a = -2_000_000_000` và `b = 1_000_000_000`,
+--     lẽ ra `a < b` nhưng `a - b` bị tràn số 32-bit thành số dương `+1_294_967_296`,
+--     khiến thuật toán sắp xếp chạy sai hoàn toàn. Luôn dùng `Integer.compare(a, b)`,
+--     `Long.compare(a, b)`, `Double.compare(a, b)` hoặc `Comparator.comparingInt(...)`. [J16]
+--   - Bẫy với `null`: Khi danh sách hoặc trường dùng để so sánh có thể mang giá trị
+--     `null`, hãy bọc bằng `Comparator.nullsFirst(...)` hoặc `Comparator.nullsLast(...)`
+--     để tránh lỗi `NullPointerException`.
+--
+-- =============================================================================
+-- JAVA-35 | Cấu trúc dữ liệu Map để làm gì
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `java.util.Map<K, V>` là cấu trúc dữ liệu lưu trữ tập hợp các cặp ánh xạ
+--   **Khóa - Giá trị (`Key -> Value`)**, trong đó mỗi `Key` là **duy nhất** (không
+--   trùng lặp) và ánh xạ tới tối đa một `Value`. `Map` không kế thừa từ `Collection`,
+--   được sử dụng rộng rãi để: (1) Tra cứu/tìm kiếm đối tượng tức thì theo mã định
+--   danh (`userId -> User`, `code -> Product`) với thời gian $O(1)$ hoặc $O(\log n)$,
+--   (2) Đếm tần suất xuất hiện của phần tử, (3) Phân nhóm dữ liệu (`deptId -> List<Emp>`),
+--   và (4) Làm bộ nhớ đệm hoặc bảng cấu hình (Cache / Dictionary). [J17]
+--
+-- Giải thích chi tiết các nhóm thao tác trên `Map`:
+--   - Ba góc nhìn tập hợp (Collection views) của một `Map`:
+--     * `keySet()`: Tập hợp `Set<K>` chứa các khóa duy nhất.
+--     * `values()`: Tập hợp `Collection<V>` chứa các giá trị (có thể trùng lặp).
+--     * `entrySet()`: Tập hợp `Set<Map.Entry<K, V>>` chứa các cặp khóa - giá trị.
+--   - Các phương thức tiện ích hiện đại từ Java 8+ giúp code ngắn gọn và tránh lỗi: [J17]
+--     * `getOrDefault(key, defaultValue)`: Trả về giá trị mặc định nếu không tìm thấy key.
+--     * `putIfAbsent(key, value)`: Chỉ ghi vào map nếu key chưa tồn tại (hoặc đang mang giá trị `null`).
+--     * `computeIfAbsent(key, k -> new ArrayList<>())`: Tự động khởi tạo giá trị mới
+--       khi key chưa có rồi trả về giá trị đó (cực kỳ hữu ích khi gom nhóm).
+--     * `merge(key, value, remappingFunction)`: Gộp giá trị mới với giá trị hiện có
+--       (rất tiện để cộng dồn thống kê/đếm tần suất).
+--
+-- Ví dụ các phương thức hiện đại của `Map` (Java 17):
+--   import java.util.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           // 1. Đếm tần suất cực gọn bằng merge()
+--           Map<String, Integer> freq = new HashMap<>();
+--           for (String w : List.of("java", "sql", "java", "git", "java")) {
+--               freq.merge(w, 1, Integer::sum);
+--           }
+--           System.out.println("Freq: " + freq + ", git=" + freq.getOrDefault("git", 0));
+--
+--           // 2. Gom nhóm an toàn bằng computeIfAbsent()
+--           Map<String, List<String>> groups = new HashMap<>();
+--           groups.computeIfAbsent("Backend", k -> new ArrayList<>()).add("An");
+--           groups.computeIfAbsent("Backend", k -> new ArrayList<>()).add("Bình");
+--
+--           // 3. Duyệt Map chuẩn thông qua entrySet()
+--           for (Map.Entry<String, List<String>> e : groups.entrySet()) {
+--               System.out.println(e.getKey() + " -> " + e.getValue());
+--           }
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Khi cần duyệt qua cả `key` và `value` của `Map`, LUÔN dùng `map.entrySet()`
+--     hoặc `map.forEach((k, v) -> ...)`. Tránh thói quen xấu là lặp qua `map.keySet()`
+--     rồi bên trong lại gọi `map.get(k)`, vì cách đó bắt `Map` phải băm và tìm kiếm
+--     lại cho từng key một cách dư thừa.
+--   - `map.put(k, v)` sẽ **ghi đè** giá trị cũ nếu `k` đã tồn tại và giá trị trả về
+--     của hàm `put` chính là **giá trị cũ** trước khi bị ghi đè (hoặc `null` nếu `k`
+--     chưa tồn tại). [J17]
+--
+-- =============================================================================
+-- JAVA-36 | Phân biệt HashMap, LinkHashMap, TreeMap
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Ba lớp này đều cài đặt `Map<K, V>` nhưng khác nhau ở cấu trúc lưu trữ nội bộ,
+--   thứ tự duyệt khóa và hiệu năng:
+--   1. `HashMap<K, V>`: Dựa trên bảng băm (mảng `Node<K,V>[]` kết hợp danh sách liên
+--      kết và tự động chuyển bucket sang Cây Đỏ-Đen khi va chạm từ 8 phần tử trở lên
+--      và bảng `>= 64` từ Java 8+). **Không đảm bảo thứ tự**; tốc độ `get/put/remove`
+--      đạt $O(1)$ trung bình và $O(\log n)$ trong trường hợp xấu nhất; cho phép **1
+--      key `null`** và nhiều value `null`.
+--   2. `LinkedHashMap<K, V>`: Kế thừa `HashMap`, bổ sung danh sách liên kết đôi chạy
+--      xuyên qua các entry để **duy trì thứ tự chèn** (insertion-order) hoặc **thứ tự
+--      truy cập** (access-order, dùng làm LRU Cache); tốc độ vẫn là $O(1)$; cho phép
+--      1 key `null`.
+--   3. `TreeMap<K, V>`: Cài đặt `NavigableMap` dựa trên Cây Đỏ-Đen (Red-Black Tree);
+--      tự động **sắp xếp các entry theo Key** (`Comparable` hoặc `Comparator`); tốc
+--      độ `get/put/remove` là $O(\log n)$; **không cho phép key `null`** khi dùng thứ
+--      tự tự nhiên (nhưng value `null` thì được phép). [J18]
+--
+-- Giải thích chi tiết cơ chế bên trong `HashMap` (Java 8+ / Java 17 - rất hay hỏi sâu):
+--   - Khi gọi `map.put(key, val)`:
+--     1. Tính mã băm đã làm mịn: `hash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16)`
+--        (XOR 16 bit cao xuống 16 bit thấp để giảm va chạm khi kích thước bảng còn nhỏ).
+--     2. Xác định chỉ số bucket bằng phép toán bit: `index = (n - 1) & hash` (với `n`
+--        là kích thước bảng luôn bằng lũy thừa của 2).
+--     3. Nếu bucket trống -> đặt `Node` mới vào. Nếu trùng `hash` và `equals()` với
+--        phần tử đã có -> ghi đè `value`. Nếu va chạm băm (hash collision) -> nối vào
+--        danh sách liên kết trong bucket đó.
+--     4. Treeification (Java 8+): Nếu số phần tử trong 1 bucket đạt ngưỡng
+--        `TREEIFY_THRESHOLD = 8` VÀ tổng capacity của bảng `>= MIN_TREEIFY_CAPACITY = 64`,
+--        bucket đó sẽ chuyển từ LinkedList sang Red-Black Tree (`TreeNode`) để giảm
+--        thời gian tìm kiếm khi bị va chạm nặng từ $O(n)$ xuống $O(\log n)$ (khi xóa
+--        xuống còn `<= 6` phần tử sẽ chuyển ngược lại thành LinkedList). [J18]
+--
+-- Ví dụ (gồm cả cách cài đặt LRU Cache kinh điển bằng `LinkedHashMap`):
+--   import java.util.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           // LinkedHashMap với accessOrder = true tự đẩy phần tử vừa đọc/ghi lên cuối
+--           Map<Integer, String> lruCache = new LinkedHashMap<>(16, 0.75f, true) {
+--               @Override
+--               protected boolean removeEldestEntry(Map.Entry<Integer, String> eldest) {
+--                   return size() > 3; // chỉ giữ tối đa 3 phần tử mới truy cập nhất
+--               }
+--           };
+--           lruCache.put(1, "A"); lruCache.put(2, "B"); lruCache.put(3, "C");
+--           lruCache.get(1);      // truy cập key 1 -> key 2 trở thành cũ nhất (eldest)
+--           lruCache.put(4, "D"); // vượt quá 3 -> tự động đuổi key 2 ra khỏi cache!
+--           System.out.println("LRU Cache: " + lruCache.keySet()); // [3, 1, 4]
+--
+--           NavigableMap<Integer, String> treeMap = new TreeMap<>(lruCache);
+--           System.out.println("TreeMap sorted keys: " + treeMap.keySet()); // [1, 3, 4]
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Cả 3 lớp `HashMap`, `LinkedHashMap` và `TreeMap` đều KHÔNG thread-safe. Khi
+--     nhiều luồng cùng ghi vào `HashMap` mà không đồng bộ sẽ gây mất dữ liệu hoặc
+--     lệch trạng thái. Trong đa luồng, hãy dùng `ConcurrentHashMap` (không dùng
+--     `Hashtable` hay `Collections.synchronizedMap` vì khóa toàn bộ bảng gây nghẽn). [J18]
+--   - Luôn chọn các kiểu bất biến (`String`, `Integer`, `Long`, `UUID`, `enum`,
+--     `record`) làm `Key` cho `Map` để tránh lỗi đổi `hashCode()` làm thất lạc entry.
+--
+-- =============================================================================
+-- JAVA-37 | Stream là gì, mục đích của Stream
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `java.util.stream.Stream<T>` (ra mắt từ Java 8) là một chuỗi các phần tử dữ liệu
+--   hỗ trợ các thao tác xử lý tổng hợp tuần tự hoặc song song theo phong cách lập
+--   trình hàm / khai báo (declarative & functional style). Mục đích của Stream là
+--   giúp lập trình viên diễn đạt trực tiếp **"cần lấy kết quả gì"** (lọc, ánh xạ,
+--   sắp xếp, gom nhóm, tính toán) qua một đường ống (pipeline) ngắn gọn, dễ đọc,
+--   hạn chế biến tạm khả biến, đồng thời tận dụng được cơ chế tính toán lười (lazy
+--   evaluation) và xử lý song song (`parallelStream`). [J19]
+--
+-- Giải thích chi tiết cấu trúc 3 phần của một Stream Pipeline: [J19]
+--   1. Nguồn dữ liệu (Source): Tạo stream từ Collection (`list.stream()`), mảng
+--      (`Arrays.stream(arr)`), giá trị rời (`Stream.of(...)`), dải số (`IntStream.range`),
+--      hoặc dòng file (`Files.lines(path)`).
+--   2. Các thao tác trung gian (0 hoặc nhiều Intermediate Operations): Như `filter`,
+--      `map`, `flatMap`, `sorted`, `distinct`, `limit` — chuyển đổi stream này thành
+--      stream khác theo cơ chế lười (chưa thực thi ngay).
+--   3. Thao tác kết thúc (Đúng 1 Terminal Operation): Như `toList`, `collect`,
+--      `reduce`, `count`, `findFirst`, `anyMatch`, `forEach` — kích hoạt toàn bộ
+--      pipeline chạy và xuất ra kết quả cuối cùng.
+--
+-- Ví dụ:
+--   import java.util.*;
+--   public class Main {
+--       record Order(String id, String status, long total) {}
+--       public static void main(String[] args) {
+--           List<Order> orders = List.of(
+--               new Order("O1", "PAID", 500),
+--               new Order("O2", "NEW",  300),
+--               new Order("O3", "PAID", 900)
+--           );
+--           long revenue = orders.stream()                   // 1. Source
+--               .filter(o -> "PAID".equals(o.status()))      // 2. Intermediate
+--               .mapToLong(Order::total)                     // 2. Intermediate (LongStream tránh boxing)
+--               .sum();                                      // 3. Terminal
+--           System.out.println("Total PAID revenue = " + revenue); // 1400
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Phân biệt `java.util.stream.Stream` (xử lý tập phần tử dữ liệu trong bộ nhớ)
+--     với `java.io.InputStream` / `OutputStream` (đọc/ghi luồng dữ liệu byte/ký tự I/O).
+--   - Stream KHÔNG làm thay đổi dữ liệu của Collection nguồn (non-mutating).
+--   - Bẫy lạm dụng `parallelStream()`: Không bật `parallelStream()` một cách mù quáng
+--     cho danh sách ít phần tử (chi phí tách/gộp luồng lớn hơn lợi ích) hoặc khi bên
+--     trong pipeline có gọi I/O chặn (blocking DB, HTTP), vì mọi `parallelStream()` đều
+--     dùng chung `ForkJoinPool.commonPool()` của toàn JVM — làm nghẽn pool này sẽ
+--     kéo chậm toàn bộ các tác vụ bất đồng bộ khác trong hệ thống! [J19]
+--
+-- =============================================================================
+-- JAVA-38 | Vì sao khi xử lý xong thường mình sẽ trả về KDL khác chứ ko lưu trong stream
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Sau khi xử lý bằng Stream, ta luôn thu thập kết quả về các kiểu dữ liệu như
+--   `List`, `Set`, `Map`, `Optional` hoặc giá trị nguyên thủy chứ không lưu trữ hay
+--   truyền biến `Stream` đi dùng tiếp vì 3 lý do cốt lõi trong thiết kế của JDK:
+--   (1) **Stream không phải là cấu trúc dữ liệu** (nó không có vùng nhớ lưu phần tử,
+--   chỉ là đường ống dẫn dữ liệu từ nguồn qua các bước tính toán), (2) **Stream chỉ
+--   tiêu thụ được ĐÚNG MỘT LẦN** (gọi thao tác lần thứ 2 trên cùng một Stream sẽ ném
+--   `IllegalStateException` ngay lập tức), và (3) **Stream đánh giá lười (Lazy)** và
+--   không có các phương thức truy cập/kiểm tra dữ liệu như `size()`, `get(i)`,
+--   `contains()` hay serialize sang JSON. [J19][J20]
+--
+-- Giải thích chi tiết:
+--   - Không lưu trữ (No storage): Stream giống như một câu truy vấn view đang mở chứ
+--     không phải một bảng chứa dữ liệu đã tính xong.
+--   - Chỉ dùng 1 lần (Single-use): Ngay khi gọi một terminal operation (như `count()`,
+--     `forEach()`, `toList()`), đường ống stream đó bị đóng vĩnh viễn. Nếu trả về một
+--     `Stream` cho nơi khác, người gọi không thể duyệt 2 lần (ví dụ vừa kiểm tra rỗng
+--     vừa lặp qua phần tử).
+--   - Quản lý tài nguyên & Tính thời điểm: Vì Stream là Lazy, nếu một hàm trả về
+--     `Stream` mà nguồn dữ liệu lại gắn với giao dịch DB (như JPA `Stream<Entity>`)
+--     hoặc file I/O (`Files.lines`), khi thoát khỏi hàm mà transaction/file đã đóng
+--     thì nơi nhận `Stream` mới bắt đầu duyệt sẽ bị lỗi ngay! Thu thập về `List`/`Set`
+--     ngay trong hàm đảm bảo dữ liệu đã được rút trích hoàn tất và an toàn. [J19][J20]
+--
+-- Ví dụ minh họa lỗi khi dùng lại Stream và cách thu thập sang KDL khác trên Java 17:
+--   import java.util.*;
+--   import java.util.stream.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           Stream<String> stream = Stream.of("an", "bình", "chi").map(String::toUpperCase);
+--           // Thu thập kết quả về List bất biến (Java 16+ có sẵn .toList())
+--           List<String> resultList = stream.toList();
+--           System.out.println("List có thể đọc nhiều lần: " + resultList.size() + " -> " + resultList);
+--
+--           try {
+--               stream.count(); // LỖI: dùng lại stream đã bị tiêu thụ!
+--           } catch (IllegalStateException e) {
+--               System.out.println("Caught expected error: " + e.getMessage());
+--           }
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Phân biệt `stream.toList()` (mới từ Java 16+) và `stream.collect(Collectors.toList())`:
+--     * `stream.toList()` trả về một **Unmodifiable List** (gọi `add`/`remove`/`sort`
+--       trên list kết quả sẽ ném `UnsupportedOperationException`), nhưng vẫn cho phép
+--       chứa phần tử `null` (khác với `List.of()` cấm `null`).
+--     * `Collectors.toList()` hiện tại trả về `ArrayList` nhưng Javadoc không cam kết
+--       cứng về tính khả biến; nếu chắc chắn cần một `List` sửa đổi được (mutable),
+--       hãy viết rõ `stream.collect(Collectors.toCollection(ArrayList::new))`. [J19][J20]
+--
+-- =============================================================================
+-- JAVA-39 | Phân biệt intermediate và terminal operation
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Trong một Stream pipeline: **Intermediate operation** (thao tác trung gian) nhận
+--   đầu vào là một Stream và trả về một **Stream mới** để nối chuỗi tiếp; đặc điểm
+--   quan trọng nhất của nó là **Lười (Lazy)** — khi gọi hàm trung gian, chưa có bất
+--   kỳ phần tử nào được duyệt hay tính toán. Ngược lại, **Terminal operation** (thao
+--   tác kết thúc) nằm ở cuối chuỗi, trả về kết quả cuối cùng (không phải Stream) hoặc
+--   `void`, có nhiệm vụ **kích hoạt (trigger)** toàn bộ các bước trung gian bắt đầu
+--   chạy thực sự và đóng Stream lại sau khi hoàn tất. [J19]
+--
+-- Giải thích chi tiết / Phân loại các thao tác: [J19]
+--   1. Intermediate Operations - Stateless (Phi trạng thái: xử lý từng phần tử độc
+--      lập, không cần nhớ các phần tử trước đó):
+--      - `filter(Predicate)`, `map(Function)`, `mapToInt/Long/Double`, `flatMap`,
+--        `peek(Consumer)`, `unordered()`.
+--   2. Intermediate Operations - Stateful (Có trạng thái: phải ghi nhớ hoặc gom các
+--      phần tử đã đi qua mới xử lý tiếp được):
+--      - `distinct()` (phải nhớ tập phần tử đã gặp bằng `Set`), `sorted()` (phải gom
+--        hết toàn bộ phần tử vào mảng mới sắp xếp được), `limit(n)`, `skip(n)`,
+--        `takeWhile(Predicate)` và `dropWhile(Predicate)` (từ Java 9+).
+--   3. Terminal Operations - Non-short-circuiting (Duyệt qua toàn bộ các phần tử hợp lệ):
+--      - `toList()`, `collect(...)`, `reduce(...)`, `count()`, `min(...)`, `max(...)`,
+--        `sum()`, `forEach(...)`, `toArray()`.
+--   4. Terminal Operations - Short-circuiting (Ngắt sớm ngay khi tìm thấy kết quả mà
+--      không cần duyệt hết phần còn lại):
+--      - `findFirst()`, `findAny()`, `anyMatch(...)`, `allMatch(...)`, `noneMatch(...)`.
+--
+-- Ví dụ chứng minh tính Lazy, Loop Fusion và Short-circuiting:
+--   import java.util.List;
+--   public class Main {
+--       public static void main(String[] args) {
+--           List<String> names = List.of("a", "bb", "ccc", "dddd");
+--           var pipeline = names.stream()
+--               .filter(s -> {
+--                   System.out.println("Filter: " + s);
+--                   return s.length() >= 2;
+--               })
+--               .map(s -> {
+--                   System.out.println("Map: " + s);
+--                   return s.toUpperCase();
+--               });
+--           System.out.println("--- Chưa có dòng Filter/Map nào in ra vì chưa gọi Terminal ---");
+--           String first = pipeline.findFirst().orElse(""); // chỉ chạy đến "bb" là dừng ngay!
+--           System.out.println("Kết quả: " + first);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy thứ tự chạy (Vertical execution / Loop fusion): Stream KHÔNG chạy hết
+--     `filter` cho toàn bộ danh sách rồi mới chạy `map`! Thay vào đó, từng phần tử
+--     đi dọc từ đầu đến cuối ống (`Filter: a` -> `Filter: bb` -> `Map: bb` -> gặp
+--     `findFirst()` nên dừng luôn, không hề chạm tới `"ccc"` và `"dddd"`).
+--   - Bẫy với `peek()` và `count()` trên Java 9+: Nếu viết
+--     `List.of(1, 2, 3).stream().peek(System.out::println).count()`, trên Java 9+ sẽ
+--     **không in ra dòng nào cả**! Vì `Stream` biết trước nguồn `List` có kích thước
+--     cố định (SIZED) và `peek`/`map` không làm thay đổi số phần tử, nên `count()`
+--     trả thẳng về `3` trong $O(1)$ mà bỏ qua luôn việc chạy pipeline! [J19]
+--
+-- =============================================================================
+-- JAVA-40 | Functional Interface là gì
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Functional Interface (còn gọi là SAM - Single Abstract Method interface) là
+--   interface chỉ có **đúng một phương thức trừu tượng** (không tính các phương thức
+--   `default`, `static`, `private` và các phương thức trùng chữ ký public của
+--   `java.lang.Object`). Trong lập trình hàm và Stream API của Java 8+, mọi biểu
+--   thức Lambda hoặc Method Reference (`::`) truyền vào `filter`, `map`, `forEach`,
+--   `Comparator` thực chất đều được trình biên dịch ánh xạ thành một thể hiện
+--   (instance) của một Functional Interface tương ứng. [J21]
+--
+-- Giải thích chi tiết 6 nhóm Functional Interface cốt lõi trong `java.util.function`: [J21]
+--   1. `Predicate<T>` (`boolean test(T t)`):
+--      Nhận 1 đối số kiểu `T`, trả về `boolean`. Dùng để lọc/kiểm tra điều kiện
+--      (`Stream.filter`, `Collection.removeIf`). Có sẵn các hàm ghép logic `.and()`,
+--      `.or()`, `.negate()`.
+--   2. `Function<T, R>` (`R apply(T t)`):
+--      Nhận `T`, chuyển đổi và trả về `R`. Dùng trong `Stream.map`, `Optional.map`,
+--      `Map.computeIfAbsent`.
+--   3. `Consumer<T>` (`void accept(T t)`):
+--      Nhận `T` để thực hiện hành động (side-effect) và không trả về kết quả. Dùng
+--      trong `Iterable.forEach`, `Stream.peek`.
+--   4. `Supplier<T>` (`T get()`):
+--      Không nhận tham số, khởi tạo hoặc cung cấp một giá trị `T` (dùng cho lazy
+--      evaluation như `Optional.orElseGet(Supplier)`, `Logger.debug(Supplier)`).
+--   5. `UnaryOperator<T>` (`T apply(T t)`):
+--      Trường hợp đặc biệt của `Function<T, T>` có cùng kiểu đầu vào và đầu ra
+--      (`List.replaceAll`).
+--   6. `BinaryOperator<T>` (`T apply(T a, T b)`):
+--      Trường hợp đặc biệt của `BiFunction<T, T, T>` gộp 2 phần tử cùng kiểu thành 1
+--      (`Stream.reduce`, `Map.merge`).
+--   - Mở rộng: Nhóm 2 tham số (`BiPredicate<T, U>`, `BiFunction<T, U, R>`,
+--     `BiConsumer<T, U>`) và nhóm chuyên biệt cho kiểu nguyên thủy (`IntPredicate`,
+--     `ToIntFunction<T>`, `IntBinaryOperator`, `LongConsumer`...) giúp tránh chi phí
+--     autoboxing.
+--
+-- Ví dụ kết hợp các Functional Interface trong một luồng xử lý:
+--   import java.util.*;
+--   import java.util.function.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           Predicate<String> notBlank  = s -> !s.isBlank();
+--           Function<String, Integer> toInt = Integer::parseInt;
+--           IntBinaryOperator sumOp     = Integer::sum;
+--           Supplier<List<Integer>> listFactory = ArrayList::new;
+--           Consumer<Integer> printer   = n -> System.out.print(n + " ");
+--
+--           List<Integer> nums = List.of("10", " ", "20", "30").stream()
+--               .filter(notBlank)
+--               .map(toInt)
+--               .collect(listFactory, List::add, List::addAll);
+--           nums.forEach(printer); // 10 20 30
+--           System.out.println("| Sum = " + nums.stream().mapToInt(i -> i).reduce(0, sumOp));
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Câu hỏi thực tế: "Tại sao `orElseGet(Supplier)` lại tốt hơn `orElse(T)` khi
+--     giá trị dự phòng tốn chi phí tạo?" -> Vì đối số của `orElse(expensiveCall())`
+--     luôn bị thực thi ngay cả khi `Optional` đã có sẵn giá trị, trong khi
+--     `orElseGet(() -> expensiveCall())` nhận vào một `Supplier` nên chỉ thực thi
+--     khi `Optional` thực sự rỗng!
+--   - Khi xử lý số lượng lớn phần tử số học, luôn ưu tiên dùng `ToIntFunction`,
+--     `IntPredicate` thay vì `Function<T, Integer>`, `Predicate<Integer>` để tránh
+--     tạo hàng triệu đối tượng `Integer` rác trên Heap. [J21]
+--
+-- =============================================================================
+-- JAVA-41 | Lambda expression
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Lambda expression (ra mắt từ Java 8) là một hàm ẩn danh (anonymous function)
+--   ngắn gọn dùng để cài đặt trực tiếp phương thức trừu tượng duy nhất của một
+--   Functional Interface. Nó cho phép truyền hành vi (behavior parameterization) vào
+--   phương thức như một giá trị dữ liệu thông thường mà không cần viết các lớp ẩn
+--   danh (`new Interface() { ... }`) dài dòng. [J22]
+--
+-- Giải thích chi tiết:
+--   - Cú pháp chuẩn:
+--     * Dạng biểu thức đơn: `(tham_số) -> biểu_thức` (tự động trả về giá trị biểu thức).
+--     * Dạng khối lệnh: `(tham_số) -> { các_câu_lệnh; return kết_quả; }`.
+--   - 3 điểm khác biệt bản chất giữa Lambda và Anonymous Inner Class (câu hỏi phân
+--     loại Senior): [J22][J23]
+--     1. Từ khóa `this` và `super`: Trong Anonymous Inner Class, `this` trỏ tới chính
+--        instance của lớp ẩn danh vừa tạo; còn trong Lambda, `this` trỏ tới instance
+--        của lớp bao ngoài (enclosing class) chứa biểu thức lambda đó.
+--     2. Phạm vi tên biến (Lexical Scope): Anonymous Inner Class tạo ra một scope
+--        mới nên cho phép khai báo biến trùng tên (shadowing) với biến cục bộ bên
+--        ngoài; Lambda chia sẻ cùng lexical scope với hàm bao ngoài nên đặt tên biến
+--        hoặc tham số lambda trùng với biến cục bộ bên ngoài sẽ bị lỗi biên dịch.
+--     3. Cơ chế biên dịch và khởi tạo trong JVM: Anonymous Inner Class luôn khiến
+--        `javac` sinh thêm một file `.class` riêng trên đĩa (`Main$1.class`); trong
+--        khi Lambda được dịch thành một phương thức `private static` (hoặc instance)
+--        ngay trong class hiện tại và liên kết động lúc runtime bằng lệnh bytecode
+--        `invokedynamic` gọi tới `LambdaMetafactory.metafactory()`, giúp tiết kiệm
+--        chi phí nạp class và tối ưu bộ nhớ tốt hơn. [J23]
+--   - Quy tắc bắt biến cục bộ (Variable Capture) & 4 loại Method Reference (`::`): [J22]
+--     * Lambda có thể đọc/ghi thoải mái biến instance và biến `static`, nhưng chỉ
+--       được phép đọc biến cục bộ (local variable) nếu biến đó là `final` hoặc
+--       **effectively final** (chỉ gán 1 lần duy nhất).
+--     * Khi thân Lambda chỉ gọi chuyển tiếp tới một hàm có sẵn, nên rút gọn thành
+--       Method Reference (`::`) theo 4 dạng: (1) Static `Class::staticMethod`,
+--       (2) Bound instance `obj::instanceMethod`, (3) Unbound instance
+--       `Class::instanceMethod`, và (4) Constructor `Class::new`.
+--
+-- Ví dụ:
+--   import java.util.function.*;
+--   public class Main {
+--       private final String prefix = "[LOG] ";
+--       void demo() {
+--           int factor = 2; // effectively final (nếu thêm dòng factor++ sẽ lỗi biên dịch!)
+--           // this.prefix trong lambda trỏ thẳng tới field prefix của Main
+--           IntFunction<String> fmt = x -> this.prefix + (x * factor);
+--           System.out.println(fmt.apply(21)); // [LOG] 42
+--
+--           // 4 dạng Method Reference tương đương Lambda:
+--           Function<String, Integer> r1 = Integer::parseInt;   // 1. Static
+--           Predicate<String>         r2 = prefix::startsWith;  // 2. Bound instance
+--           Function<String, String>  r3 = String::trim;        // 3. Unbound instance
+--           Supplier<StringBuilder>   r4 = StringBuilder::new;  // 4. Constructor
+--           System.out.println(r1.apply(r3.apply(" 99 ")) + " | " + r2.test("[") + " | " + r4.get().append("OK"));
+--       }
+--       public static void main(String[] args) { new Main().demo(); }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Tại sao Java lại cấm Lambda sửa đổi giá trị của biến cục bộ bên ngoài?
+--     Vì biến cục bộ nằm trên Stack Frame của thread gọi hàm và sẽ biến mất khi hàm
+--     kết thúc, trong khi đối tượng Lambda có thể được giữ lại hoặc truyền sang một
+--     thread khác chạy sau đó; do đó Lambda chỉ bắt bản sao giá trị (capture by
+--     value). Việc ép biến phải là `effectively final` giúp tránh hiểu lầm rằng sửa
+--     biến trong Lambda sẽ cập nhật được biến gốc ở ngoài, đồng thời ngăn ngừa lỗi
+--     data race giữa các luồng. [J22]
+--
+-- =============================================================================
+-- NGUỒN CHÍNH THỨC
+-- =============================================================================
+-- [J1] https://docs.oracle.com/javase/specs/jls/se17/html/jls-3.html#jls-3.10.5
+-- [J2] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/String.html
+-- [J3] https://openjdk.org/jeps/254
+-- [J4] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/StringBuilder.html
+-- [J5] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/StringBuffer.html
+-- [J6] https://docs.oracle.com/javase/tutorial/essential/concurrency/imstrat.html
+-- [J7] https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.10
+-- [J8] https://openjdk.org/jeps/280
+-- [J9] https://docs.oracle.com/javase/specs/jls/se17/html/jls-10.html
+-- [J10] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Deque.html
+-- [J11] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/ArrayList.html
+-- [J12] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/LinkedList.html
+-- [J13] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Set.html
+-- [J14] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/Object.html#hashCode()
+-- [J15] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/HashSet.html
+-- [J16] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Comparator.html
+-- [J17] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Map.html
+-- [J18] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/HashMap.html
+-- [J19] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/stream/package-summary.html
+-- [J20] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/stream/Collectors.html
+-- [J21] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/function/package-summary.html
+-- [J22] https://docs.oracle.com/javase/specs/jls/se17/html/jls-15.html#jls-15.27
+-- [J23] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/invoke/LambdaMetafactory.html

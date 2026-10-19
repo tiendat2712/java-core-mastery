@@ -1,0 +1,1350 @@
+-- PHỎNG VẤN JAVA CORE (PHẦN 3/3) | 16/16 CÂU TRONG ẢNH (câu 42-57: Concurrency, Design Pattern, Algorithm, Tree, Generic)
+-- Đây là tài liệu ôn tập. Mọi dòng đều là comment SQL; code Java chép ra file .java để chạy.
+-- Ví dụ viết cho Java 17 (LTS). Chỗ nào phụ thuộc phiên bản/JVM/OS sẽ được nói rõ.
+-- Lưu ý đánh số: Trong ảnh có 2 câu cùng mang số 55 nên được tách thành JAVA-55a và JAVA-55b;
+-- ảnh gốc nhảy từ 55 sang 57 (không có câu 56) nên tổng cộng phần này có đúng 16 câu.
+-- Nguồn [J1]..[J22] được ánh xạ ở cuối file. Đối chiếu ngày 19/10/2026.
+--
+-- =============================================================================
+-- JAVA-42 | Thread, Process là gì
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Process` (Tiến trình) là một chương trình đang thực thi (ví dụ một tiến trình
+--   JVM `java.exe`), được hệ điều hành cấp phát không gian địa chỉ bộ nhớ **riêng
+--   biệt và cô lập** với các tiến trình khác. Còn `Thread` (Luồng / Tiểu trình) là
+--   đơn vị thực thi nhỏ nhất được hệ điều hành lập lịch bên trong một Process. Một
+--   Process có thể chứa nhiều Thread; các Thread trong cùng một JVM **chia sẻ chung**
+--   vùng nhớ Heap và Metaspace (Method Area), nhưng mỗi Thread sở hữu ngăn xếp lời
+--   gọi hàm (`Stack`), thanh ghi bộ đếm chương trình (`PC Register`) và `Native Stack`
+--   **riêng biệt**. [J1][J2]
+--
+-- Giải thích chi tiết / Bảng so sánh Process vs Thread:
+--   - Không gian bộ nhớ (Memory space):
+--     * Process: Sở hữu không gian địa chỉ ảo hoàn toàn độc lập.
+--     * Thread: Dùng chung vùng nhớ Heap và Method Area của Process cha; riêng biến
+--       cục bộ và khung lời gọi hàm nằm trên Stack riêng của từng Thread. [J2]
+--   - Giao tiếp và chia sẻ dữ liệu:
+--     * Giữa các Process: Phải dùng cơ chế IPC (Inter-Process Communication như
+--       Socket, Pipe, Shared Memory, Message Queue) tốn nhiều chi phí.
+--     * Giữa các Thread: Đọc/ghi trực tiếp vào các đối tượng chung trên Heap cực
+--       nhanh, nhưng bắt buộc phải kiểm soát đồng bộ hóa (synchronization) để tránh
+--       race condition.
+--   - Chi phí khởi tạo và chuyển ngữ cảnh (Context Switch):
+--     * Process: Khởi tạo nặng, chuyển ngữ cảnh tốn kém vì phải thay đổi bảng phân
+--       trang bộ nhớ (page table) của CPU.
+--     * Thread: Khởi tạo và chuyển ngữ cảnh nhẹ hơn rất nhiều vì dùng chung không
+--       gian địa chỉ của Process.
+--   - Mức độ cô lập sự cố (Fault isolation):
+--     * Một Process bị crash không làm hỏng Process khác; nhưng một Thread gây lỗi
+--       nghiêm trọng như `OutOfMemoryError` hoặc gọi `System.exit()` có thể làm sập
+--       toàn bộ Process JVM. [J1]
+--
+-- Ví dụ kiểm tra thông tin Process và Thread hiện tại trong Java 17:
+--   public class Main {
+--       public static void main(String[] args) {
+--           long pid = ProcessHandle.current().pid(); // Java 9+ lấy PID của tiến trình JVM
+--           Thread t = Thread.currentThread();
+--           System.out.println("Process PID=" + pid + " | Thread=" + t.getName());
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Biến cục bộ (local variable) kiểu nguyên thủy nằm trên Stack riêng của từng
+--     Thread nên mặc nhiên là thread-safe; tuy nhiên, nếu biến cục bộ là biến tham
+--     chiếu cùng trỏ tới một đối tượng dùng chung trên Heap thì bản thân đối tượng
+--     đó VẪN không thread-safe nếu nhiều Thread cùng sửa đổi. [J2]
+--   - Phân biệt User Thread (non-daemon) và Daemon Thread: JVM chỉ tự động kết thúc
+--     khi tất cả các User Thread đã chạy xong; các Daemon Thread (như luồng dọn rác
+--     GC) sẽ tự động bị dừng theo ngay khi không còn User Thread nào hoạt động. [J3]
+--
+-- =============================================================================
+-- JAVA-43 | Số lượng Thread, Process có thể xử lý của OS là bao nhiêu
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Không có một con số cố định duy nhất, mà khi trả lời phỏng vấn cần tách bạch rõ
+--   2 khía cạnh:
+--   1. Số lượng Thread thực thi **SONG SONG VẬT LÝ** tại đúng một thời điểm (True
+--      Hardware Parallelism): Bằng đúng **số nhân logic của CPU** (`Logical Cores =
+--      Physical Cores × Hyper-Threading`), truy vấn trong Java qua hàm
+--      `Runtime.getRuntime().availableProcessors()`.
+--   2. Tổng số lượng Thread / Process tối đa có thể **KHỞI TẠO VÀ QUẢN LÝ ĐỒNG THỜI**
+--      (Concurrency thông qua chia sẻ lát cắt thời gian - Time-slicing): Không cố
+--      định mà bị giới hạn bởi dung lượng RAM trống ngoài Heap, kích thước Stack mỗi
+--      thread (`-Xss`), và các tham số giới hạn của Hệ điều hành. [J3][J4]
+--
+-- Giải thích chi tiết các yếu tố giới hạn thực tế:
+--   - Giới hạn về bộ nhớ Stack của mỗi Platform Thread (`-Xss`):
+--     * Trên JVM 64-bit (Linux/macOS/Windows), kích thước Stack mặc định cho mỗi
+--       thread thường là **1 MB** (`-Xss1m`) [J4].
+--     * Vùng nhớ Stack này nằm ngoài Heap (native/off-heap memory). Nếu ứng dụng tạo
+--       4.000 platform threads thì riêng bộ nhớ dành cho Stack đã tiêu tốn khoảng
+--       4 GB RAM.
+--   - Giới hạn cấu hình của Hệ điều hành (ví dụ trên Linux):
+--     * `/proc/sys/kernel/threads-max`: Tổng số thread tối đa trên toàn hệ thống.
+--     * `ulimit -u` (max user processes): Giới hạn số lượng process/thread tối đa
+--       mà một user được phép mở.
+--     * `/proc/sys/kernel/pid_max`: Giá trị định danh PID/TID tối đa.
+--     * `/proc/sys/vm/max_map_count`: Số vùng ánh xạ bộ nhớ tối đa của một process.
+--
+-- Ví dụ truy vấn thông số phần cứng & bộ nhớ trên JVM hiện tại:
+--   public class Main {
+--       public static void main(String[] args) {
+--           int logicalCores = Runtime.getRuntime().availableProcessors();
+--           long maxHeapMB   = Runtime.getRuntime().maxMemory() / (1024 * 1024);
+--           System.out.println("Logical CPU cores = " + logicalCores + ", Max Heap = " + maxHeapMB + " MB");
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy lỗi kinh điển: Khi ứng dụng tạo quá nhiều thread vượt quá giới hạn RAM
+--     off-heap hoặc chạm trần `ulimit -u` của OS, JVM sẽ ném ra lỗi
+--     `java.lang.OutOfMemoryError: unable to create native thread` ngay cả khi vùng
+--     nhớ Heap (`-Xmx`) vẫn còn trống rất nhiều!
+--   - Mở rộng kiến thức phiên bản mới: Trên Java 17, mỗi `Thread` là một Platform
+--     Thread ánh xạ 1:1 với OS Kernel Thread nên chỉ tạo được vài nghìn luồng. Từ
+--     Java 21 (JEP 444), Java chính thức có thêm **Virtual Threads** do JVM quản lý
+--     trên Heap (stack co giãn chỉ vài KB), cho phép chạy đồng thời hàng triệu
+--     virtual threads cho các tác vụ I/O-bound trên cùng một tiến trình JVM. [J6]
+--
+-- =============================================================================
+-- JAVA-44 | Thread được áp dụng ở đâu, như thế nào, cho ví dụ
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   - **Áp dụng ở đâu:** (1) Xử lý đồng thời hàng nghìn HTTP request trong các Web
+--     Server (Tomcat, Jetty, Undertow); (2) Thực thi các tác vụ nền bất đồng bộ (gửi
+--     email, đẩy thông báo, xuất file báo cáo, ghi audit log) để trả kết quả nhanh
+--     cho người dùng; (3) Gọi song song nhiều dịch vụ độc lập (Database, Redis,
+--     External API) rồi tổng hợp kết quả nhằm giảm tổng độ trễ (latency); và (4) Xử
+--     lý lô (batch processing) tận dụng tối đa đa nhân CPU.
+--   - **Áp dụng như thế nào:** Trong thực tế dự án, ta **không** khởi tạo thủ công
+--     `new Thread()` cho từng tác vụ mà định nghĩa công việc qua `Runnable` hoặc
+--     `Callable<V>`, sau đó ủy quyền cho **`ExecutorService` (Thread Pool)** hoặc
+--     lập trình bất đồng bộ bằng **`CompletableFuture`**. [J3][J5][J7]
+--
+-- Giải thích chi tiết 4 cách tạo và chạy tác vụ đa luồng trong Java:
+--   1. Kế thừa lớp `Thread` (`class MyThread extends Thread` và ghi đè `run()`):
+--      Ít dùng vì Java chỉ cho phép đơn kế thừa class và làm gắn chặt logic công
+--      việc với lớp quản lý luồng.
+--   2. Cài đặt `Runnable` (`void run()`):
+--      Tách rời định nghĩa tác vụ khỏi cơ chế chạy luồng; dùng được với Lambda, nhưng
+--      không trả về kết quả và không ném được Checked Exception.
+--   3. Cài đặt `Callable<V>` (`V call() throws Exception`):
+--      Nộp vào `ExecutorService.submit(callable)` để nhận về đối tượng `Future<V>`,
+--      cho phép lấy kết quả trả về và bắt được cả Checked Exception.
+--   4. Sử dụng `CompletableFuture<T>` (Java 8+):
+--      Cho phép kết hợp chuỗi tác vụ bất đồng bộ không chặn (`supplyAsync`,
+--      `thenApply`, `thenCombine`, `allOf`, `exceptionally`) trên một `Executor` tùy
+--      chỉnh. [J5][J7]
+--
+-- Ví dụ gọi song song 2 dịch vụ độc lập bằng `CompletableFuture` và `ExecutorService`:
+--   import java.util.concurrent.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           ExecutorService pool = Executors.newFixedThreadPool(2);
+--           try {
+--               CompletableFuture<String> userFuture =
+--                   CompletableFuture.supplyAsync(() -> "User:An", pool);
+--               CompletableFuture<Integer> scoreFuture =
+--                   CompletableFuture.supplyAsync(() -> 95, pool);
+--               String combined = userFuture
+--                   .thenCombine(scoreFuture, (u, s) -> u + " | Score:" + s)
+--                   .join();
+--               System.out.println(combined); // User:An | Score:95
+--           } finally {
+--               pool.shutdown();
+--           }
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy `start()` vs `run()`: Để tạo luồng thực thi mới, BẮT BUỘC phải gọi
+--     `thread.start()`; nếu gọi nhầm `thread.run()` trực tiếp thì không có luồng mới
+--     nào được sinh ra cả — hàm `run()` sẽ chạy đồng bộ ngay trên luồng hiện tại!
+--     Ngoài ra, gọi `start()` lần thứ 2 trên cùng một đối tượng `Thread` sẽ ném
+--     `IllegalThreadStateException`. [J3]
+--   - Khi dùng `CompletableFuture.supplyAsync(...)` trong ứng dụng thực tế, luôn
+--     truyền một `ExecutorService` riêng vào tham số thứ 2 thay vì để mặc định dùng
+--     `ForkJoinPool.commonPool()` nhằm tránh làm nghẽn pool chung của JVM. [J5]
+--
+-- =============================================================================
+-- JAVA-45 | Có 1000 tasks thì tạo mấy thread để xử lý ==> Amount of CPU core(s)
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Tuyệt đối **KHÔNG tạo 1000 threads** cho 1000 tasks (vì tốn ~1 GB RAM cho stack
+--   và làm CPU kiệt sức vì chuyển ngữ cảnh - context switching). Thay vào đó, ta tạo
+--   một **Thread Pool** có kích thước dựa trên **số nhân logic của CPU**
+--   (`N_cpu = Runtime.getRuntime().availableProcessors()`) và bản chất công việc của
+--   1000 tasks đó:
+--   1. Nếu là tác vụ **CPU-bound** (tính toán thuần túy trên RAM, không chờ I/O):
+--      Đặt số thread bằng **`N_cpu`** (hoặc `N_cpu + 1`).
+--   2. Nếu là tác vụ **I/O-bound** (chờ mạng HTTP, chờ Database, đọc/ghi đĩa):
+--      Đặt số thread lớn hơn `N_cpu` theo tỷ lệ thời gian chờ trên thời gian tính
+--      toán: `N_threads = N_cpu * U_cpu * (1 + W / C)`. [J3][J7]
+--
+-- Giải thích chi tiết công thức tính kích thước Thread Pool (theo *Java Concurrency in Practice*):
+--   - Với tác vụ **CPU-bound** (mã hóa, nén dữ liệu, xử lý ảnh, tính toán số học):
+--     * Mọi thread đều liên tục dùng CPU (`W / C ≈ 0`). Nếu tạo nhiều thread hơn số
+--       core (`N_cpu`), các thread phải tranh giành CPU và liên tục bị context switch
+--       (lưu/nạp thanh ghi, làm lạnh CPU cache), khiến tổng thời gian hoàn thành 1000
+--       tasks còn CHẬM HƠN. Do đó chỉ đặt **`N_cpu`** (hoặc `N_cpu + 1` để bù khi một
+--       luồng tạm dừng vì page fault).
+--   - Với tác vụ **I/O-bound** (gọi REST API ngoài, truy vấn SQL, đọc file):
+--     * Khi một thread đang bị chặn (blocked) chờ phản hồi từ mạng/đĩa, nó không tiêu
+--       thụ CPU. Ta cần thêm các thread khác vào chạy để CPU không bị bỏ không:
+--       `N_threads = N_cpu * U_cpu * (1 + W / C)`
+--       Trong đó:
+--       + `N_cpu`: Số nhân logic (`availableProcessors()`).
+--       + `U_cpu`: Mức sử dụng CPU mục tiêu ($0 < U_{cpu} \le 1$, ví dụ `0.8` tức 80%).
+--       + `W / C`: Tỷ số giữa thời gian chờ I/O (`Wait time`) và thời gian dùng CPU
+--         (`Compute time`). Ví dụ một task mất 90ms chờ mạng và 10ms xử lý JSON thì
+--         `W / C = 9`; trên máy 8 cores với `U_cpu = 1` ta có thể cấu hình khoảng
+--         `8 * (1 + 9) = 80` threads.
+--
+-- Ví dụ xác định kích thước Thread Pool theo số nhân CPU:
+--   import java.util.concurrent.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           int cores = Runtime.getRuntime().availableProcessors();
+--           int cpuBoundThreads = cores;           // Cho tác vụ tính toán nặng (CPU-bound)
+--           int ioBoundThreads  = cores * 4;       // Cho tác vụ có chờ I/O vừa phải (W/C ~ 3)
+--           System.out.println("Cores=" + cores + " -> CPU pool=" + cpuBoundThreads + ", IO pool=" + ioBoundThreads);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy nút cổ chai ở tài nguyên hạ tầng (Downstream bottleneck): Ngay cả khi công
+--     thức `W / C` tính ra 100 threads cho tác vụ gọi Database, nếu DB Connection
+--     Pool (như HikariCP) chỉ giới hạn tối đa 20 connections thì việc mở 100 threads
+--     chỉ làm 80 threads đứng xếp hàng chờ lấy connection! Khi đó phải căn chỉnh đồng
+--     bộ giữa Thread Pool, Connection Pool và giới hạn chịu tải của dịch vụ đích.
+--   - Bẫy bên trong Container (Docker / Kubernetes): Từ Java 10+ và trên Java 17,
+--     `availableProcessors()` đã tự động nhận diện giới hạn CPU quota của container
+--     (cgroups), nhưng nếu cấu hình CPU limit quá thấp (ví dụ `< 1` core),
+--     `availableProcessors()` sẽ trả về `1` -> cần kiểm tra để tránh việc pool mặc
+--     định chỉ tạo đúng 1 thread.
+--
+-- =============================================================================
+-- JAVA-46 | Làm sao để x Thread xử lý N tasks ==> thread pool, executor service
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Để dùng `x` threads cố định xử lý `N` tasks (ví dụ `x = 4` threads xử lý `N = 1000`
+--   tasks), ta sử dụng mô hình **Thread Pool** thông qua `ExecutorService` /
+--   `ThreadPoolExecutor`. Toàn bộ `N` tasks được đẩy vào một hàng đợi an toàn đa
+--   luồng (`BlockingQueue<Runnable>`); `x` worker threads trong pool sẽ liên tục lấy
+--   lần lượt từng task từ hàng đợi ra thực thi, làm xong task này lại lấy tiếp task
+--   khác mà không tốn chi phí hủy hay tạo mới thread. [J7][J8]
+--
+-- Giải thích chi tiết cơ chế hoạt động và các tham số của `ThreadPoolExecutor`: [J8]
+--   - 5 tham số quan trọng nhất khi khởi tạo `ThreadPoolExecutor`:
+--     1. `corePoolSize`: Số lượng worker threads cốt lõi luôn được duy trì trong pool.
+--     2. `maximumPoolSize`: Số lượng threads tối đa được phép mở rộng.
+--     3. `keepAliveTime` & `unit`: Thời gian chờ tối đa trước khi thu hồi các thread
+--        dư (những thread vượt quá `corePoolSize`) khi không có việc.
+--     4. `workQueue` (`BlockingQueue<Runnable>`): Hàng đợi chứa các task đang chờ
+--        đến lượt xử lý (ví dụ `ArrayBlockingQueue`, `LinkedBlockingQueue`).
+--     5. `RejectedExecutionHandler`: Chính sách từ chối khi cả `maximumPoolSize` lẫn
+--        `workQueue` đều đã đầy:
+--        * `AbortPolicy` (mặc định): Ném `RejectedExecutionException`.
+--        * `CallerRunsPolicy`: Bắt chính luồng gọi `execute()` tự chạy task đó (tạo
+--          cơ chế giảm tốc độ tự nhiên - backpressure).
+--        * `DiscardPolicy` / `DiscardOldestPolicy`: Bỏ qua task mới hoặc task cũ nhất.
+--
+-- Ví dụ chuẩn thực tế: 4 threads xử lý 20 tasks bằng `ThreadPoolExecutor`:
+--   import java.util.concurrent.*;
+--   public class Main {
+--       public static void main(String[] args) throws InterruptedException {
+--           int xThreads = 4, nTasks = 20;
+--           ThreadPoolExecutor executor = new ThreadPoolExecutor(
+--               xThreads, xThreads, 0L, TimeUnit.MILLISECONDS,
+--               new ArrayBlockingQueue<>(100),
+--               new ThreadPoolExecutor.CallerRunsPolicy()
+--           );
+--           try {
+--               for (int i = 1; i <= nTasks; i++) {
+--                   final int taskId = i;
+--                   executor.execute(() -> {
+--                       // Xử lý công việc của taskId
+--                   });
+--               }
+--           } finally {
+--               executor.shutdown(); // Ngừng nhận task mới, chạy nốt các task đã nằm trong queue
+--               if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+--                   executor.shutdownNow();
+--               }
+--           }
+--           System.out.println("Completed tasks: " + executor.getCompletedTaskCount()); // 20
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Câu hỏi bẫy rất hay gặp: "Khi `corePoolSize` đã bận hết và có task mới nộp vào,
+--     `ThreadPoolExecutor` sẽ tạo thêm thread mới (tới `maximumPoolSize`) trước hay
+--     đưa vào `workQueue` trước?" -> Trả lời: Nó đẩy vào **`workQueue` TRƯỚC**! Chỉ
+--     khi nào `workQueue` đã **ĐẦY** thì nó mới tạo thêm thread vượt quá `corePoolSize`
+--     cho tới `maximumPoolSize`! [J8]
+--   - Bẫy `Executors.newFixedThreadPool(x)` và `newCachedThreadPool()`:
+--     * `newFixedThreadPool` dùng `LinkedBlockingQueue` không giới hạn sức chứa
+--       (`Integer.MAX_VALUE`), nên nếu task đẩy vào nhanh hơn tốc độ xử lý sẽ tích tụ
+--       trong queue gây `OutOfMemoryError` (và tham số `maximumPoolSize` cũng vô tác
+--       dụng vì queue không bao giờ đầy).
+--     * `newCachedThreadPool` cho phép `maximumPoolSize = Integer.MAX_VALUE` nên dễ
+--       tạo hàng chục nghìn thread làm sập OS.
+--     -> Trong môi trường Production, luôn khởi tạo tường minh `new ThreadPoolExecutor(...)`
+--        với hàng đợi có giới hạn (`ArrayBlockingQueue`).
+--
+-- =============================================================================
+-- JAVA-47 | Làm sao để đảm bảo đồng bộ dữ liệu từ CPU cache về memory chính xác ==> volatile
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Trên các bộ vi xử lý đa nhân hiện đại, mỗi nhân CPU có thanh ghi và bộ nhớ đệm
+--   (L1/L2 cache) riêng, đồng thời trình biên dịch và CPU có thể sắp xếp lại thứ tự
+--   lệnh (instruction reordering) để tối ưu tốc độ. Do đó, giá trị một Thread vừa ghi
+--   có thể chỉ nằm ở cache cục bộ mà chưa cập nhật về RAM, khiến Thread khác đọc phải
+--   dữ liệu cũ (lỗi Visibility). Từ khóa **`volatile`** giải quyết triệt để vấn đề
+--   này nhờ 2 cam kết trong Java Memory Model (JMM): (1) **Đảm bảo tính nhìn thấy
+--   ngay (Visibility)** giữa mọi thread thông qua đồng bộ cache với bộ nhớ chính, và
+--   (2) **Chống đảo thứ tự lệnh (Ordering / Happens-Before)** thông qua rào cản bộ
+--   nhớ (memory barriers). [J9]
+--
+-- Giải thích chi tiết cơ chế của `volatile` theo đặc tả JLS §17.4: [J9]
+--   1. Visibility (Tính nhìn thấy):
+--      Mỗi thao tác ghi vào biến `volatile` (volatile write) buộc CPU đẩy dữ liệu từ
+--      thanh ghi/cache về bộ nhớ chung và làm mất hiệu lực (invalidate) dòng cache
+--      tương ứng ở các nhân CPU khác; mỗi thao tác đọc biến `volatile` (volatile read)
+--      buộc đọc lại giá trị mới nhất từ bộ nhớ chung.
+--   2. Quy tắc Happens-Before & Chống Reordering:
+--      Một thao tác ghi vào biến `volatile` *happens-before* mọi thao tác đọc biến
+--      `volatile` đó diễn ra sau nó. Nhờ rào cản bộ nhớ (Memory Fence), các lệnh đọc/
+--      ghi biến thường đứng TRƯỚC lệnh ghi `volatile` ở Thread A không thể bị đẩy
+--      xuống sau lệnh ghi `volatile`, nên Thread B sau khi đọc biến `volatile` sẽ
+--      nhìn thấy toàn bộ các thay đổi trước đó của Thread A.
+--
+-- Ví dụ chuẩn: Dùng `volatile` cho cờ trạng thái dừng luồng và `AtomicInteger` cho bộ đếm:
+--   import java.util.concurrent.atomic.AtomicInteger;
+--   public class Main {
+--       private static volatile boolean running = true; // ĐÚNG: 1 luồng ghi, các luồng khác đọc cờ
+--       private static final AtomicInteger safeCounter = new AtomicInteger(0); // ĐÚNG cho đếm cộng dồn
+--       public static void main(String[] args) throws InterruptedException {
+--           Thread worker = new Thread(() -> {
+--               while (running) { // Nếu thiếu volatile, JIT có thể tối ưu thành while(true) treo mãi!
+--                   safeCounter.incrementAndGet();
+--                   Thread.onSpinWait();
+--               }
+--           });
+--           worker.start();
+--           Thread.sleep(10);
+--           running = false;      // Thread worker nhìn thấy ngay lập tức
+--           worker.join();
+--           System.out.println("Worker stopped safely, count = " + safeCounter.get());
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - BẪY KINH ĐIỂN: "`volatile` có đảm bảo thread-safe cho phép tăng `count++`
+--     không?" -> Trả lời: **TUYỆT ĐỐI KHÔNG!**
+--     `volatile` chỉ đảm bảo Visibility cho từng thao tác đọc hoặc ghi đơn lẻ, nhưng
+--     **KHÔNG đảm bảo tính nguyên tử (Atomicity)** cho các phép toán hợp thành
+--     (compound read-modify-write) như `count++`, `count += 5`, hay `if (!init) init = true`.
+--     Phép `count++` thực chất gồm 3 bước rời nhau: (1) Đọc `count`, (2) Cộng thêm 1,
+--     (3) Ghi lại `count`. Nếu 2 thread cùng đọc được `count = 10` rồi cùng cộng 1 và
+--     ghi `11`, một lần tăng sẽ bị mất (Race Condition).
+--   - Khi nào dùng `volatile`? Chỉ dùng khi giá trị mới được gán **không phụ thuộc
+--     vào giá trị hiện tại** của biến (thường là 1 luồng ghi cờ trạng thái `boolean`,
+--     hoặc xuất bản một đối tượng bất biến mới tạo, hoặc trong Double-Checked Locking).
+--     Nếu cần đếm hoặc cập nhật phụ thuộc giá trị cũ, hãy dùng `AtomicInteger`,
+--     `LongAdder` (dựa trên lệnh phần cứng CAS - Compare-And-Swap) hoặc `synchronized` / `Lock`. [J9][J10]
+--
+-- =============================================================================
+-- JAVA-48 | Làm sao để 1 function tại 1 thời điểm chỉ được phép 1 thread truy cập
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Đây là bài toán loại trừ tương hỗ (**Mutual Exclusion / Mutex**) đối với vùng
+--   găng (critical section). Trong Java có 2 cơ chế chuẩn để đảm bảo tại một thời
+--   điểm chỉ duy nhất 1 thread được thực thi hàm đó:
+--   1. Sử dụng từ khóa **`synchronized`** (trên phương thức hoặc khối lệnh `synchronized(lock)`).
+--   2. Sử dụng khóa tường minh **`ReentrantLock`** (trong gói `java.util.concurrent.locks`)
+--      với cặp lệnh `lock.lock()` và mở khóa bắt buộc trong khối `finally { lock.unlock(); }`. [J11][J12]
+--
+-- Giải thích chi tiết / Phân biệt `synchronized` và `ReentrantLock`:
+--   - Cơ chế của `synchronized` (Intrinsic Lock / Monitor Lock): [J11]
+--     * `public synchronized void fn()`: Khóa trên chính đối tượng hiện tại (`this`).
+--     * `public static synchronized void fn()`: Khóa trên đối tượng `ClassName.class`
+--       (áp dụng chung cho toàn bộ mọi instance của lớp đó).
+--     * `synchronized (this.lockObj) { ... }`: Khóa trên một đối tượng `private final Object`
+--       riêng biệt, giúp thu hẹp vùng khóa chỉ bao quanh đúng các câu lệnh nhạy cảm
+--       và tự động nhả khóa khi thoát khỏi khối lệnh (kể cả khi có ngoại lệ).
+--   - Cơ chế của `ReentrantLock` (Explicit Lock): [J12]
+--     * Cung cấp các tính năng nâng cao mà `synchronized` không có:
+--       + `tryLock()` / `tryLock(timeout, unit)`: Thử lấy khóa không chặn hoặc chỉ
+--         chờ trong một khoảng thời gian nhất định rồi rút lui (tránh treo vô hạn khi deadlock).
+--       + `lockInterruptibly()`: Cho phép ngắt (`interrupt`) luồng đang đứng chờ khóa.
+--       + Chế độ công bằng (`new ReentrantLock(true)` - Fair Lock): Ưu tiên cấp khóa
+--         cho luồng đã đứng chờ lâu nhất tránh đói tài nguyên (starvation).
+--       + Hỗ trợ nhiều hàng đợi điều kiện (`Condition` qua `lock.newCondition()`).
+--
+-- Ví dụ cả 2 cách (`synchronized` và `ReentrantLock`):
+--   import java.util.concurrent.locks.ReentrantLock;
+--   public class Main {
+--       private int balance = 1000;
+--       private final ReentrantLock lock = new ReentrantLock();
+--
+--       // Cách 1: synchronized method (chỉ 1 thread gọi được trên cùng instance tại 1 thời điểm)
+--       public synchronized void withdrawSync(int amount) {
+--           if (balance >= amount) balance -= amount;
+--       }
+--       // Cách 2: ReentrantLock (luôn đặt unlock() trong khối finally!)
+--       public void withdrawLock(int amount) {
+--           lock.lock();
+--           try {
+--               if (balance >= amount) balance -= amount;
+--           } finally {
+--               lock.unlock();
+--           }
+--       }
+--       public static void main(String[] args) {
+--           Main acc = new Main();
+--           acc.withdrawSync(200);
+--           acc.withdrawLock(300);
+--           System.out.println("Remaining balance = " + acc.balance); // 500
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy khóa nhầm phạm vi (Instance lock vs Class lock): Nếu khai báo
+--     `public synchronized void fn()` (không có `static`), khóa nằm trên từng đối
+--     tượng `this`. Nếu 2 thread gọi `fn()` trên **2 instance khác nhau** (`new MyService()`),
+--     chúng vẫn chạy đồng thời! Muốn chặn trên phạm vi toàn bộ ứng dụng bất kể bao
+--     nhiêu instance, phải dùng `static synchronized` hoặc khóa trên một biến
+--     `private static final Object GLOBAL_LOCK = new Object()`, hoặc đảm bảo bean đó
+--     là Singleton (như mặc định trong Spring). [J11]
+--   - Tuyệt đối KHÔNG dùng `String` literal (`synchronized ("LOCK")`) hoặc các kiểu
+--     Wrapper (`Integer`, `Boolean`) làm đối tượng khóa, vì chúng được dùng chung qua
+--     String Pool / Integer Cache trên toàn JVM, rất dễ gây Deadlock ngầm với các thư
+--     viện khác!
+--
+-- =============================================================================
+-- JAVA-49 | Design pattern: Singleton, Builder, Factory, Strategy, MVC
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Năm mẫu thiết kế kinh điển này thuộc 3 nhóm khác nhau giải quyết các bài toán cốt
+--   lõi trong kiến trúc phần mềm:
+--   - Nhóm Khởi tạo (Creational): **Singleton** (đảm bảo duy nhất 1 instance toàn
+--     cục), **Builder** (khởi tạo từng bước cho đối tượng phức tạp nhiều tham số và
+--     giữ tính bất biến), **Factory** (tách biệt và đóng gói logic khởi tạo đối tượng
+--     khỏi phía sử dụng).
+--   - Nhóm Hành vi (Behavioral): **Strategy** (đóng gói một họ thuật toán và cho phép
+--     hoán đổi linh hoạt lúc runtime thay cho `if-else` phức tạp).
+--   - Mẫu Kiến trúc (Architectural): **MVC - Model-View-Controller** (phân tách dữ
+--     liệu nghiệp vụ, giao diện hiển thị và tầng điều phối request). [J9][J13]
+--
+-- Giải thích chi tiết & Ví dụ cài đặt chuẩn Java 17 cho từng Pattern:
+--   ---------------------------------------------------------------------------
+--   [49.1] SINGLETON PATTERN (Nhóm Creational)
+--   ---------------------------------------------------------------------------
+--   - Mục đích: Đảm bảo một class chỉ có ĐÚNG MỘT instance duy nhất trong JVM và cung
+--     cấp điểm truy cập chung tới nó (ví dụ: quản lý cấu hình, cache nội bộ, pool).
+--   - 3 cách cài đặt chuẩn Thread-Safe:
+--     1. **Bill Pugh Holder (Khuyên dùng):** Dùng một `static class Holder` bên trong;
+--        JVM đảm bảo chỉ khởi tạo `Holder.INSTANCE` đúng 1 lần và hoàn toàn thread-safe
+--        khi hàm `getInstance()` được gọi lần đầu (lazy-loading mà không tốn chi phí
+--        đồng bộ `synchronized`). [J13]
+--     2. **Enum Singleton:** Dùng `enum` 1 phần tử; ngắn gọn nhất và chống được cả
+--        việc phá Singleton bằng Reflection lẫn Serialization. [J13]
+--     3. **Double-Checked Locking (DCL):** Kiểm tra `null` 2 lần trước và sau khối
+--        `synchronized`; biến `instance` BẮT BUỘC phải khai báo **`volatile`** để
+--        ngăn hiện tượng đảo lệnh khiến thread khác đọc phải đối tượng vừa cấp phát
+--        ô nhớ nhưng chưa chạy xong constructor! [J9]
+--   - Ví dụ code Singleton:
+--       public final class AppConfig {
+--           private AppConfig() {}
+--           private static class Holder {
+--               static final AppConfig INSTANCE = new AppConfig(); // chỉ nạp khi gọi getInstance()
+--           }
+--           public static AppConfig getInstance() { return Holder.INSTANCE; }
+--       }
+--       public final class DclSingleton {
+--           private static volatile DclSingleton instance; // bắt buộc có volatile!
+--           private DclSingleton() {}
+--           public static DclSingleton getInstance() {
+--               DclSingleton res = instance;
+--               if (res == null) {
+--                   synchronized (DclSingleton.class) {
+--                       res = instance;
+--                       if (res == null) instance = res = new DclSingleton();
+--                   }
+--               }
+--               return res;
+--           }
+--       }
+--
+--   ---------------------------------------------------------------------------
+--   [49.2] BUILDER PATTERN (Nhóm Creational)
+--   ---------------------------------------------------------------------------
+--   - Mục đích: Xây dựng đối tượng có nhiều thuộc tính (đặc biệt là nhiều thuộc tính
+--     tùy chọn) theo từng bước rõ ràng. Khắc phục phản mẫu "Telescoping Constructor"
+--     (nhiều hàm tạo nạp chồng dễ truyền nhầm thứ tự 2 tham số cùng kiểu `String` hay
+--     `int`) và khắc phục việc dùng Setter rời rạc làm mất tính bất biến (Immutability).
+--   - Ví dụ code Builder Pattern:
+--       public final class HttpRequestConfig {
+--           private final String url;
+--           private final int timeoutMs;
+--           private final boolean retry;
+--           private HttpRequestConfig(Builder b) {
+--               this.url = b.url; this.timeoutMs = b.timeoutMs; this.retry = b.retry;
+--           }
+--           public static class Builder {
+--               private final String url;          // tham số bắt buộc
+--               private int timeoutMs = 3000;      // tham số tùy chọn có mặc định
+--               private boolean retry = false;
+--               public Builder(String url) { this.url = url; }
+--               public Builder timeoutMs(int ms) { this.timeoutMs = ms; return this; }
+--               public Builder retry(boolean r)  { this.retry = r; return this; }
+--               public HttpRequestConfig build() { return new HttpRequestConfig(this); }
+--           }
+--           @Override public String toString() { return url + " (timeout=" + timeoutMs + ", retry=" + retry + ")"; }
+--       }
+--
+--   ---------------------------------------------------------------------------
+--   [49.3] FACTORY PATTERN (Factory Method / Simple Factory - Nhóm Creational)
+--   ---------------------------------------------------------------------------
+--   - Mục đích: Đóng gói quyết định chọn và khởi tạo lớp cụ thể vào một nơi duy nhất;
+--     code phía gọi (Client) chỉ phụ thuộc vào `interface` chung (`Notification`),
+--     giúp dễ dàng bổ sung loại mới mà không phải sửa code ở khắp nơi gọi (tuân thủ
+--     Open/Closed Principle và Dependency Inversion).
+--   - Ví dụ code Factory Pattern kết hợp `switch` expression của Java 17:
+--       interface Notification { String send(String msg); }
+--       record EmailNotification() implements Notification {
+--           public String send(String msg) { return "EMAIL: " + msg; }
+--       }
+--       record SmsNotification() implements Notification {
+--           public String send(String msg) { return "SMS: " + msg; }
+--       }
+--       final class NotificationFactory {
+--           static Notification create(String channel) {
+--               return switch (channel.toUpperCase()) {
+--                   case "EMAIL" -> new EmailNotification();
+--                   case "SMS"   -> new SmsNotification();
+--                   default -> throw new IllegalArgumentException("Unknown: " + channel);
+--               };
+--           }
+--       }
+--
+--   ---------------------------------------------------------------------------
+--   [49.4] STRATEGY PATTERN (Nhóm Behavioral)
+--   ---------------------------------------------------------------------------
+--   - Mục đích: Định nghĩa một họ các thuật toán cùng giải quyết một nhiệm vụ (ví dụ:
+--     các cách tính chiết khấu, các cổng thanh toán, các chiến lược sắp xếp), đóng
+--     gói từng thuật toán vào một lớp cài đặt chung một interface để có thể thay đổi
+--     linh hoạt lúc runtime. Với Java 8+, nếu Strategy interface chỉ có 1 phương thức
+--     (Functional Interface), ta có thể truyền trực tiếp bằng biểu thức Lambda!
+--   - Ví dụ code Strategy Pattern:
+--       @FunctionalInterface
+--       interface DiscountStrategy { long apply(long amount); }
+--       class CheckoutService {
+--           private DiscountStrategy strategy;
+--           CheckoutService(DiscountStrategy strategy) { this.strategy = strategy; }
+--           void setStrategy(DiscountStrategy strategy) { this.strategy = strategy; }
+--           long finalPrice(long price) { return strategy.apply(price); }
+--       }
+--       // Sử dụng: new CheckoutService(p -> p * 80 / 100).finalPrice(1000); // 800
+--
+--   ---------------------------------------------------------------------------
+--   [49.5] MVC PATTERN (Model - View - Controller - Mẫu kiến trúc)
+--   ---------------------------------------------------------------------------
+--   - Mục đích: Tách biệt mối quan tâm (Separation of Concerns) trong ứng dụng thành
+--     3 tầng độc lập để dễ phát triển, bảo trì và kiểm thử:
+--     * **Model:** Chứa dữ liệu miền (Domain/Entity), trạng thái và quy tắc nghiệp vụ
+--       cốt lõi; hoàn toàn không biết gì về giao diện hiển thị hay HTTP request.
+--     * **View:** Chịu trách nhiệm trình bày dữ liệu cho người dùng (trang HTML/JSP/
+--       Thymeleaf, hoặc cấu trúc JSON Response DTO trong RESTful API).
+--     * **Controller:** Tiếp nhận request từ phía client, kiểm tra tính hợp lệ của
+--       tham số đầu vào, gọi tầng Service/Model thực thi nghiệp vụ và trả về View
+--       hoặc HTTP Response tương ứng.
+--
+-- Ví dụ tổng hợp chạy thử các Design Patterns trên (Java 17):
+--   public class Main {
+--       public static void main(String[] args) {
+--           // 1. Singleton: luôn trả về cùng 1 instance duy nhất
+--           System.out.println(AppConfig.getInstance() == AppConfig.getInstance()); // true
+--           // 2. Builder: khởi tạo đối tượng bất biến nhiều tham số rõ ràng
+--           HttpRequestConfig cfg = new HttpRequestConfig.Builder("https://api.example.com")
+--               .timeoutMs(5000).retry(true).build();
+--           // 3. Factory: tạo đối tượng theo tham số đầu vào
+--           Notification notif = NotificationFactory.create("EMAIL");
+--           // 4. Strategy: truyền chiến lược giảm giá 20% bằng Lambda
+--           CheckoutService checkout = new CheckoutService(p -> p * 80 / 100);
+--           System.out.println(cfg + " | " + notif.send("Paid " + checkout.finalPrice(1000)));
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy Double-Checked Locking thiếu `volatile`: Phép gán `instance = new DclSingleton()`
+--     ở mức máy gồm 3 bước: (1) Cấp phát vùng nhớ, (2) Chạy constructor khởi tạo các
+--     field, (3) Gán địa chỉ vùng nhớ vào biến `instance`. Nếu thiếu `volatile`, CPU
+--     có thể đảo bước (3) chạy trước bước (2); lúc đó Thread B đi vào thấy `instance != null`
+--     nên dùng ngay một đối tượng chưa chạy xong constructor! [J9]
+--   - Phân biệt Factory và Strategy: **Factory** là mẫu khởi tạo (tập trung vào việc
+--     *tạo ra đối tượng nào*), còn **Strategy** là mẫu hành vi (tập trung vào việc
+--     *thực thi thuật toán nào* trên đối tượng ngữ cảnh đang có; thường người ta dùng
+--     Factory để lấy ra một Strategy phù hợp).
+--   - Trong kiến trúc MVC thực tế (như Spring Boot), tránh lỗi "Fat Controller" (viết
+--     toàn bộ logic nghiệp vụ và truy vấn DB ngay trong Controller); Controller chỉ
+--     nên đóng vai trò điều phối mỏng, còn nghiệp vụ đặt ở Service/Domain Model.
+--
+-- =============================================================================
+-- JAVA-50 | Algorithm: Sorting (Bubble, Insertion, Selection, Merge, Quick) và Logic (number, distinct)
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Khi trả lời phỏng vấn về các thuật toán sắp xếp và bài toán logic cơ bản, cần
+--   nêu rõ ý tưởng cốt lõi, độ phức tạp Thời gian (Best / Average / Worst), Không
+--   gian bộ nhớ phụ (Space Complexity) và tính Ổn định (Stable - có bảo toàn thứ tự
+--   tương đối của các phần tử bằng nhau hay không):
+--   - Nhóm $O(n^2)$ tại chỗ (Space $O(1)$): **Bubble Sort** (đổi chỗ cặp kề nhau,
+--     Stable, có cờ dừng sớm đạt Best $O(n)$), **Selection Sort** (tìm min đưa về
+--     đầu, số lần swap ít nhất $\le n-1$, Unstable, luôn $O(n^2)$), **Insertion Sort**
+--     (chèn phần tử vào đoạn đầu đã sắp, Stable, Best $O(n)$, cực nhanh trên mảng nhỏ
+--     hoặc gần như đã có thứ tự).
+--   - Nhóm $O(n \log n)$ Chia để trị: **Merge Sort** (chia đôi và trộn, luôn đảm bảo
+--     $O(n \log n)$ mọi trường hợp, Stable, nhưng tốn $O(n)$ bộ nhớ phụ), **Quick Sort**
+--     (phân hoạch quanh phần tử chốt Pivot, trung bình $O(n \log n)$ rất nhanh nhờ
+--     cache locality, Space $O(\log n)$ đệ quy, Unstable, Worst $O(n^2)$ nếu chọn
+--     pivot tệ). [J14]
+--
+-- Giải thích chi tiết từng thuật toán & Bài toán Logic (Number, Distinct):
+--   - [50.1] 5 Thuật toán sắp xếp kinh điển:
+--     1. **Bubble Sort (Sắp xếp nổi bọt):** Lặp qua mảng, so sánh 2 phần tử liền kề
+--        `a[j]` và `a[j+1]`, nếu nghịch thế thì đổi chỗ để phần tử lớn nhất "nổi"
+--        dần về cuối mảng. Dùng thêm biến `boolean swapped` để ngắt ngay nếu vòng lặp
+--        không có phép đổi chỗ nào (đạt $O(n)$ khi mảng đã sắp sẵn).
+--     2. **Selection Sort (Sắp xếp chọn):** Ở lượt thứ `i`, quét toàn bộ đoạn chưa
+--        sắp `[i..n-1]` để tìm vị trí `minIdx` của phần tử nhỏ nhất rồi đổi chỗ
+--        1 lần duy nhất với `a[i]`. Luôn tốn $O(n^2)$ phép so sánh.
+--     3. **Insertion Sort (Sắp xếp chèn):** Coi đoạn `[0..i-1]` đã có thứ tự, lấy
+--        phần tử `key = a[i]` dịch các phần tử lớn hơn `key` sang phải 1 ô rồi chèn
+--        `key` vào đúng chỗ trống.
+--     4. **Merge Sort (Sắp xếp trộn):** Đệ quy chia đôi mảng tới khi chỉ còn 1 phần
+--        tử, sau đó trộn (merge) hai mảng con đã tăng dần thành mảng lớn tăng dần.
+--     5. **Quick Sort (Sắp xếp nhanh):** Chọn phần tử chốt `pivot` (nên chọn ở giữa
+--        hoặc ngẫu nhiên), dùng 2 con trỏ phân hoạch các phần tử nhỏ hơn sang trái,
+--        lớn hơn sang phải rồi đệ quy 2 nửa.
+--     * Liên hệ thực tế trong JDK (`java.util.Arrays.sort`): Java sử dụng **Dual-Pivot
+--       Quicksort** cho mảng nguyên thủy (`int[]`, `long[]`, `double[]` - vì không
+--       cần tính Stable) và dùng **TimSort** (thuật toán lai giữa Merge Sort và
+--       Insertion Sort, Stable, $O(n \log n)$) cho mảng đối tượng (`Object[]`, `List.sort`). [J14]
+--   - [50.2] Bài toán Logic thường gặp:
+--     * **Number logic:** Kiểm tra số nguyên tố trong $O(\sqrt{n})$ (chỉ thử chia
+--       cho 2 và các số lẻ `i` tới `i * i <= n`); đảo ngược số nguyên hoặc kiểm tra
+--       số đối xứng (palindrome) bằng phép chia lấy dư `% 10` và `/ 10` mà không tốn
+--       bộ nhớ chuyển sang `String`.
+--     * **Distinct logic (Lọc phần tử phân biệt):** Dùng `LinkedHashSet` (giữ nguyên
+--       thứ tự xuất hiện, $O(n)$), hoặc `IntStream.of(a).distinct().toArray()`, hoặc
+--       sắp xếp mảng rồi dùng kỹ thuật 2 con trỏ (Two Pointers) lọc tại chỗ với bộ
+--       nhớ phụ $O(1)$.
+--
+-- Ví dụ code cài đặt đầy đủ cả 5 thuật toán Sorting + Logic (chạy được ngay trên Java 17):
+--   import java.util.*;
+--   public class Main {
+--       // 1. Bubble Sort (có cờ dừng sớm O(n) khi mảng đã tăng dần)
+--       static void bubbleSort(int[] a) {
+--           for (int i = 0; i < a.length - 1; i++) {
+--               boolean swapped = false;
+--               for (int j = 0; j < a.length - 1 - i; j++) {
+--                   if (a[j] > a[j + 1]) {
+--                       int tmp = a[j]; a[j] = a[j + 1]; a[j + 1] = tmp;
+--                       swapped = true;
+--                   }
+--               }
+--               if (!swapped) break;
+--           }
+--       }
+--       // 2. Selection Sort
+--       static void selectionSort(int[] a) {
+--           for (int i = 0; i < a.length - 1; i++) {
+--               int minIdx = i;
+--               for (int j = i + 1; j < a.length; j++) {
+--                   if (a[j] < a[minIdx]) minIdx = j;
+--               }
+--               int tmp = a[i]; a[i] = a[minIdx]; a[minIdx] = tmp;
+--           }
+--       }
+--       // 3. Insertion Sort
+--       static void insertionSort(int[] a) {
+--           for (int i = 1; i < a.length; i++) {
+--               int key = a[i], j = i - 1;
+--               while (j >= 0 && a[j] > key) {
+--                   a[j + 1] = a[j];
+--                   j--;
+--               }
+--               a[j + 1] = key;
+--           }
+--       }
+--       // 4. Merge Sort
+--       static void mergeSort(int[] a, int left, int right) {
+--           if (left >= right) return;
+--           int mid = left + (right - left) / 2;
+--           mergeSort(a, left, mid);
+--           mergeSort(a, mid + 1, right);
+--           int[] temp = new int[right - left + 1];
+--           int i = left, j = mid + 1, k = 0;
+--           while (i <= mid && j <= right) temp[k++] = (a[i] <= a[j]) ? a[i++] : a[j++];
+--           while (i <= mid) temp[k++] = a[i++];
+--           while (j <= right) temp[k++] = a[j++];
+--           System.arraycopy(temp, 0, a, left, temp.length);
+--       }
+--       // 5. Quick Sort (chọn pivot ở giữa để tránh suy biến O(n^2) khi mảng đã có thứ tự)
+--       static void quickSort(int[] a, int low, int high) {
+--           if (low >= high) return;
+--           int pivot = a[low + (high - low) / 2];
+--           int i = low, j = high;
+--           while (i <= j) {
+--               while (a[i] < pivot) i++;
+--               while (a[j] > pivot) j--;
+--               if (i <= j) {
+--                   int tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+--                   i++; j--;
+--               }
+--           }
+--           if (low < j) quickSort(a, low, j);
+--           if (i < high) quickSort(a, i, high);
+--       }
+--       // 6. Logic Number: Kiểm tra số nguyên tố O(sqrt(n)) & đảo số không dùng String
+--       static boolean isPrime(int n) {
+--           if (n < 2) return false;
+--           if (n % 2 == 0) return n == 2;
+--           for (int i = 3; i * i <= n; i += 2) {
+--               if (n % i == 0) return false;
+--           }
+--           return true;
+--       }
+--       static int reverseNumber(int n) {
+--           int rev = 0;
+--           while (n != 0) {
+--               rev = rev * 10 + (n % 10);
+--               n /= 10;
+--           }
+--           return rev;
+--       }
+--       // 7. Logic Distinct: Lọc các số phân biệt giữ nguyên thứ tự xuất hiện
+--       static int[] distinctKeepOrder(int[] a) {
+--           Set<Integer> seen = new LinkedHashSet<>();
+--           for (int x : a) seen.add(x);
+--           return seen.stream().mapToInt(Integer::intValue).toArray();
+--       }
+--       public static void main(String[] args) {
+--           int[] arr = {9, 3, 7, 1, 5, 3};
+--           quickSort(arr, 0, arr.length - 1);
+--           System.out.println("QuickSorted: " + Arrays.toString(arr));
+--           System.out.println("isPrime(29)=" + isPrime(29) + " | reverse(1234)=" + reverseNumber(1234));
+--           System.out.println("Distinct: " + Arrays.toString(distinctKeepOrder(new int[]{4, 2, 4, 1, 2})));
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy tràn số khi tính chỉ số giữa `mid` trong Merge Sort / Quick Sort / Binary Search:
+--     Tuyệt đối không viết `int mid = (left + right) / 2;` vì khi mảng lớn, tổng
+--     `left + right` có thể vượt quá `Integer.MAX_VALUE` gây tràn thành số âm! Luôn
+--     viết `int mid = left + (right - left) / 2;` hoặc `(left + right) >>> 1`.
+--   - Trong Merge Sort, điều kiện trộn phải viết `a[i] <= a[j]` (có dấu `=`) để giữ
+--     được tính **Stable** (phần tử bên nửa trái giữ nguyên vị trí đứng trước phần tử
+--     bằng nó bên nửa phải).
+--   - Khi kiểm tra số nguyên tố với `n` lớn gần `Integer.MAX_VALUE`, điều kiện lặp
+--     `i * i <= n` có thể bị tràn số nguyên; viết `i <= n / i` sẽ an toàn tuyệt đối.
+--
+-- =============================================================================
+-- JAVA-51 | Data Structure ==> Tree
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Tree` (Cây) là cấu trúc dữ liệu phân cấp phi tuyến tính gồm một nút gốc (`root`)
+--   và các nút con liên kết với nhau theo quan hệ cha - con mà không tạo thành chu
+--   trình. Trong phỏng vấn Java, 3 loại cây quan trọng nhất là: (1) **Binary Tree**
+--   (Cây nhị phân - mỗi nút có tối đa 2 con `left`, `right`), (2) **Binary Search
+--   Tree - BST** (Cây nhị phân tìm kiếm - mọi khóa bên cây con trái `< node.key <`
+--   mọi khóa bên cây con phải, giúp tìm kiếm/thêm/xóa đạt trung bình $O(\log n)$),
+--   và (3) **Self-Balancing BST / Red-Black Tree** (Cây nhị phân tự cân bằng giữ
+--   chiều cao luôn $\approx O(\log n)$, là cấu trúc nền tảng đứng sau `TreeMap`,
+--   `TreeSet` và các bucket va chạm lớn trong `HashMap`). [J15]
+--
+-- Giải thích chi tiết:
+--   - Các khái niệm cơ bản:
+--     * `Root` (nút gốc không có cha), `Leaf` (nút lá không có con), `Height` (chiều
+--       cao tính bằng số cạnh trên đường đi dài nhất từ nút đó tới lá), `Depth` (độ
+--       sâu tính từ gốc xuống nút đó).
+--   - Vấn đề suy biến của BST thường và vai trò của Cây Đỏ-Đen (Red-Black Tree):
+--     * Nếu chèn lần lượt một dãy đã có thứ tự (`10, 20, 30, 40...`) vào BST thường,
+--       cây sẽ bị lệch hẳn sang phải thành một danh sách liên kết đơn, làm thời gian
+--       tìm kiếm suy biến từ $O(\log n)$ thành $O(n)$.
+--     * Cây AVL và Cây Đỏ-Đen (Red-Black Tree) giải quyết vấn đề này bằng các phép
+--       xoay trái/phải (rotations) và tô màu nút sau khi thêm/xóa, đảm bảo chiều cao
+--       cây luôn cỡ $O(\log n)$ trong mọi trường hợp xấu nhất. [J15]
+--   - 4 phương pháp duyệt cây nhị phân (Tree Traversal):
+--     1. **In-order (Left -> Node -> Right):** Khi duyệt trên BST sẽ xuất ra dãy giá
+--        trị **tăng dần**!
+--     2. **Pre-order (Node -> Left -> Right):** Thăm nút gốc trước, dùng để sao chép
+--        cây hoặc tuần tự hóa cấu trúc cây.
+--     3. **Post-order (Left -> Right -> Node):** Thăm hết các con rồi mới xử lý cha
+--        (dùng khi tính chiều cao cây, tính dung lượng thư mục, xóa cây).
+--     4. **Level-order (BFS - Duyệt theo tầng):** Dùng hàng đợi `Queue` (`ArrayDeque`)
+--        để duyệt từ trên xuống dưới, từ trái qua phải theo từng mức.
+--
+-- Ví dụ cài đặt BST hoàn chỉnh (`insert`, `contains`, `inOrder`, `levelOrder`):
+--   import java.util.*;
+--   public class Main {
+--       static class Node {
+--           int key;
+--           Node left, right;
+--           Node(int key) { this.key = key; }
+--       }
+--       static class BinarySearchTree {
+--           private Node root;
+--           public void insert(int key) { root = insertRec(root, key); }
+--           private Node insertRec(Node cur, int key) {
+--               if (cur == null) return new Node(key);
+--               if (key < cur.key)      cur.left  = insertRec(cur.left, key);
+--               else if (key > cur.key) cur.right = insertRec(cur.right, key);
+--               return cur;
+--           }
+--           public boolean contains(int key) {
+--               Node cur = root;
+--               while (cur != null) {
+--                   if (key == cur.key) return true;
+--                   cur = (key < cur.key) ? cur.left : cur.right;
+--               }
+--               return false;
+--           }
+--           public void printInOrder() { inOrderRec(root); System.out.println(); }
+--           private void inOrderRec(Node n) {
+--               if (n == null) return;
+--               inOrderRec(n.left);
+--               System.out.print(n.key + " ");
+--               inOrderRec(n.right);
+--           }
+--           public List<Integer> levelOrder() {
+--               List<Integer> res = new ArrayList<>();
+--               if (root == null) return res;
+--               Queue<Node> q = new ArrayDeque<>();
+--               q.offer(root);
+--               while (!q.isEmpty()) {
+--                   Node cur = q.poll();
+--                   res.add(cur.key);
+--                   if (cur.left != null)  q.offer(cur.left);
+--                   if (cur.right != null) q.offer(cur.right);
+--               }
+--               return res;
+--           }
+--       }
+--       public static void main(String[] args) {
+--           BinarySearchTree bst = new BinarySearchTree();
+--           for (int x : new int[]{50, 30, 70, 20, 40, 60, 80}) bst.insert(x);
+--           bst.printInOrder(); // 20 30 40 50 60 70 80 (luôn tăng dần!)
+--           System.out.println("BFS Level-order: " + bst.levelOrder() + " | has 40: " + bst.contains(40));
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy kinh điển khi viết hàm kiểm tra cây nhị phân có phải là BST hợp lệ không
+--     (`isValidBST`): Rất nhiều người chỉ kiểm tra `node.left.key < node.key` và
+--     `node.right.key > node.key` tại từng nút cục bộ. Điều đó là SAI, vì một nút
+--     nằm ở nhánh phải của cây con trái vẫn có thể lớn hơn nút gốc tổ tiên! Cách
+--     đúng: truyền khoảng giới hạn `(Long min, Long max)` xuống từng bước đệ quy,
+--     hoặc kiểm tra dãy duyệt In-order có tăng ngặt hay không.
+--   - Ngoài BST/Red-Black Tree, trong JDK còn có cấu trúc **Binary Heap** (cây nhị
+--     phân hoàn chỉnh lưu trên mảng `Object[]`) dùng để cài đặt `PriorityQueue`.
+--
+-- =============================================================================
+-- JAVA-52 | Khái niệm Generic
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Generics` (ra mắt từ Java 5) là cơ chế tham số hóa kiểu dữ liệu (Parameterized
+--   Types), cho phép truyền kiểu dữ liệu (`<T>`, `<E>`, `<K, V>`) như một tham số khi
+--   định nghĩa class, interface và method. Ba mục đích lớn nhất của Generics là:
+--   (1) **An toàn kiểu ngay lúc biên dịch** (Compile-time Type Safety - phát hiện lỗi
+--   sai kiểu lúc compile thay vì bị `ClassCastException` lúc runtime), (2) **Loại bỏ
+--   ép kiểu thủ công** (`(String) list.get(0)`), và (3) **Tái sử dụng thuật toán/cấu
+--   trúc dữ liệu** dùng chung cho nhiều kiểu đối tượng khác nhau. [J16][J17]
+--
+-- Giải thích chi tiết cơ chế Type Erasure (Xóa kiểu) trong Java: [J16][J19]
+--   - Để đảm bảo tương thích ngược ở cấp bytecode với code trước Java 5, Generics
+--     trong Java được thực hiện bởi trình biên dịch thông qua cơ chế **Type Erasure**:
+--     1. Kiểm tra chặt chẽ toàn bộ quy tắc kiểu dữ liệu lúc compile.
+--     2. Xóa bỏ các tham số kiểu `<T>` và thay thế bằng kiểu giới hạn đầu tiên của nó
+--        (ví dụ `<T extends Number>` được thay bằng `Number`; nếu không có bound như
+--        `<T>` thì thay bằng `Object`).
+--     3. Tự động chèn các lệnh ép kiểu (cast) ở những nơi lấy dữ liệu ra và sinh các
+--        phương thức cầu nối (bridge methods) nếu cần để giữ tính đa hình.
+--   - Vì lúc runtime JVM không còn giữ thông tin kiểu `T` của đối tượng generic
+--     (ví dụ `ArrayList<String>` và `ArrayList<Integer>` lúc chạy đều chỉ là một
+--     class `ArrayList.class`), Generics trong Java có **4 giới hạn quan trọng**: [J19]
+--     1. Không thể dùng trực tiếp kiểu nguyên thủy làm đối số kiểu (`List<int>` lỗi
+--        -> phải dùng `List<Integer>`).
+--     2. Không thể khởi tạo trực tiếp biến kiểu `new T()` hoặc tạo mảng `new T[10]`
+--        (nếu cần tạo instance phải truyền `Class<T>` hoặc `Supplier<T>`).
+--     3. Không thể khai báo thuộc tính tĩnh dùng tham số kiểu của lớp (`static T info`).
+--     4. Không thể dùng `instanceof` với kiểu tham số hóa cụ thể (`o instanceof List<String>`
+--        bị cấm vì lúc chạy không phân biệt được với `List<Integer>`; chỉ được viết
+--        `o instanceof List<?>`).
+--
+-- Ví dụ:
+--   import java.util.*;
+--   public class Main {
+--       public static void main(String[] args) {
+--           // Có Generic: an toàn kiểu tuyệt đối lúc compile, không cần ép kiểu
+--           List<String> names = new ArrayList<>();
+--           names.add("Java 17");
+--           // names.add(123);              // Lỗi biên dịch ngay lập tức!
+--           String first = names.get(0);    // Không cần viết (String) names.get(0)
+--           System.out.println(first + " | same runtime class: "
+--               + (names.getClass() == new ArrayList<Integer>().getClass())); // true (do Type Erasure)
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Tuyệt đối không dùng Raw Type (kiểu thô bỏ trống `<>`, ví dụ `List list = new ArrayList();`)
+--     trong code mới, vì Raw Type làm tắt kiểm tra kiểu của compiler và đẩy rủi ro
+--     `ClassCastException` về lại lúc runtime.
+--   - Không thể tạo lớp ngoại lệ Generic (`class MyException<T> extends Exception` bị
+--     lỗi biên dịch) vì khối `catch` của JVM cần biết chính xác kiểu ngoại lệ lúc
+--     runtime mà không bị xóa kiểu. [J19]
+--
+-- =============================================================================
+-- JAVA-53 | Phân biệt parameterized type T, E với wildcard ?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `T`, `E`, `K`, `V` là các **Tham số kiểu có tên (Type Parameters)** được dùng khi
+--   **KHAI BÁO** một generic class, interface hoặc generic method để đặt tên cho một
+--   kiểu dữ liệu và dùng lại tên đó ở nhiều nơi nhằm **ràng buộc các vị trí đó phải
+--   cùng một kiểu**. Ngược lại, `?` là **Ký tự đại diện (Wildcard)** chỉ được dùng làm
+--   đối số kiểu ở phía **SỬ DỤNG** (`List<?>`, `List<? extends Number>`) để biểu diễn
+--   một kiểu chưa xác định ("unknown type") khi ta không cần đặt tên hay ràng buộc
+--   các tham số phải cùng kiểu với nhau. [J16][J18]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   - Vị trí xuất hiện hợp lệ:
+--     * `T, E, K, V` (Type Parameter): Khai báo ở đầu class/interface (`class Box<T>`)
+--       hoặc trước kiểu trả về của method (`public static <T> T first(List<T> list)`),
+--       sau đó được dùng làm kiểu bên trong phạm vi đó.
+--     * `?` (Wildcard Type Argument): Chỉ xuất hiện bên trong cặp dấu `<...>` khi sử
+--       dụng một kiểu generic đã có (như kiểu tham số hàm `void print(List<?> list)`).
+--       KHÔNG thể dùng `?` để khai báo class (`class Box<?>` là lỗi cú pháp) hay gọi
+--       `new ArrayList<?>()` trực tiếp.
+--   - Khả năng ràng buộc giữa các tham số:
+--     * Với `<T>`: Viết `<T> void copy(List<T> src, List<T> dest)` ép buộc `src` và
+--       `dest` phải chứa cùng một kiểu `T`.
+--     * Với `?`: Nếu viết `void copy(List<?> src, List<?> dest)` thì `src` có thể là
+--       `List<String>` còn `dest` là `List<Integer>` (hai dấu `?` độc lập nhau), và
+--       compiler sẽ cấm thêm phần tử từ `src` sang `dest`!
+--   - Quy ước đặt tên chữ cái chuẩn trong JDK: [J17]
+--     * `E` (Element - phần tử Collection), `T` (Type - kiểu bất kỳ), `K` (Key),
+--       `V` (Value), `N` (Number), `R` (Result/Return type).
+--
+-- Ví dụ phân biệt rõ khi nào dùng `?` và khi nào bắt buộc dùng `T`:
+--   import java.util.*;
+--   public class Main {
+--       // 1. Dùng Wildcard (?): chỉ đọc để in ra, không cần biết hay ràng buộc tên kiểu
+--       static void printAll(List<?> list) {
+--           for (Object item : list) System.out.print(item + " ");
+--           System.out.println();
+--       }
+--       // 2. Dùng Type Parameter (T): BẮT BUỘC vì cần ràng buộc nguồn, đích và kiểu trả về CÙNG kiểu T!
+--       static <T> T copyAndReturnFirst(List<T> src, List<T> dest) {
+--           dest.addAll(src);
+--           return src.get(0);
+--       }
+--       public static void main(String[] args) {
+--           List<String> a = List.of("A", "B");
+--           List<String> b = new ArrayList<>();
+--           String first = copyAndReturnFirst(a, b);
+--           printAll(b); // A B
+--           System.out.println("First: " + first);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Quy tắc chọn giữa `<T>` và `<?>` (theo Effective Java): Nếu một tham số kiểu chỉ
+--     xuất hiện **đúng một lần** trong chữ ký hàm và không có tham số nào khác hay
+--     kiểu trả về phụ thuộc vào nó (như hàm `printAll(List<?> list)` ở trên), hãy
+--     ưu tiên dùng Wildcard `<?>` cho API đơn giản. Nếu cần liên kết kiểu giữa 2 tham
+--     số hoặc giữa tham số với kiểu trả về, bắt buộc phải dùng `<T>`. [J18]
+--   - Khác biệt về giới hạn (Bounds): Tham số kiểu `<T>` chỉ hỗ trợ giới hạn trên
+--     (`<T extends A & B>`, có thể nhiều bound), trong khi Wildcard `?` hỗ trợ cả
+--     giới hạn trên (`<? extends A>`) lẫn giới hạn dưới (`<? super A>`), nhưng chỉ
+--     được phép có 1 bound.
+--
+-- =============================================================================
+-- JAVA-54 | Khi nào sử dụng generic, cho ví dụ sử dụng
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Ta sử dụng Generics khi muốn viết một lớp, giao diện hoặc phương thức có cùng
+--   cấu trúc và thuật toán xử lý nhưng áp dụng được cho **nhiều kiểu dữ liệu khác
+--   nhau** mà vẫn giữ được **kiểm tra an toàn kiểu lúc biên dịch**. Trong dự án thực
+--   tế, 4 trường hợp dùng Generics nhiều nhất là: (1) Thiết kế các lớp vỏ bọc phản
+--   hồi chung như `ApiResponse<T>`, `PageResult<T>`, `Result<T, E>`; (2) Xây dựng các
+--   tầng Base Repository / Base Service (`CrudRepository<T, ID>`); (3) Viết các hàm
+--   tiện ích (Utility methods) dùng chung; và (4) Viết thuật toán so sánh/tính toán
+--   có ràng buộc kiểu (`<T extends Comparable<? super T>>`). [J17]
+--
+-- Giải thích chi tiết:
+--   - Nếu không tự viết Generic Class như `ApiResponse<T>`, bạn hoặc phải tạo hàng
+--     chục class lặp lại (`UserApiResponse`, `OrderApiResponse`...), hoặc phải khai
+--     báo trường `Object data` khiến mất an toàn kiểu, mất gợi ý code của IDE và khó
+--     sinh tài liệu OpenAPI/Swagger chính xác.
+--   - Với Bounded Type Parameter (`<T extends UpperBound>`): Cho phép bên trong hàm
+--     generic gọi được các phương thức của `UpperBound` (ví dụ gọi `a.compareTo(b)`
+--     khi khai báo `<T extends Comparable<? super T>>`) mà vẫn giữ nguyên kiểu cụ thể
+--     `T` khi trả về. [J17]
+--
+-- Ví dụ thực tế: `ApiResponse<T>` chuẩn cho REST API + Bounded Generic Method `findMax`:
+--   import java.util.*;
+--   public class Main {
+--       // 1. Generic Class (Record trong Java 17): vỏ bọc chuẩn cho mọi REST API
+--       public record ApiResponse<T>(int code, String message, T data) {
+--           public static <T> ApiResponse<T> ok(T data) {
+--               return new ApiResponse<>(200, "SUCCESS", data);
+--           }
+--       }
+--       // 2. Bounded Generic Method: tìm phần tử lớn nhất cho mọi kiểu cài đặt Comparable
+--       public static <T extends Comparable<? super T>> T findMax(Collection<T> items) {
+--           Iterator<T> it = items.iterator();
+--           T max = it.next();
+--           while (it.hasNext()) {
+--               T cur = it.next();
+--               if (cur.compareTo(max) > 0) max = cur;
+--           }
+--           return max;
+--       }
+--       public static void main(String[] args) {
+--           ApiResponse<List<String>> resp = ApiResponse.ok(List.of("Java", "Spring"));
+--           System.out.println(resp.code() + " -> " + resp.data());
+--           System.out.println("Max number = " + findMax(List.of(15, 42, 8, 23))); // 42
+--           System.out.println("Max string = " + findMax(List.of("An", "Dũng", "Bình"))); // Dũng
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Quy tắc Multiple Bounds (Nhiều ràng buộc kiểu): Một tham số kiểu `T` có thể bị
+--     ràng buộc bởi tối đa 1 class và nhiều interface theo cú pháp nối bằng dấu `&`:
+--     `<T extends Number & Comparable<T> & Serializable>`. Lưu ý: nếu trong danh sách
+--     bound có một **class** (như `Number`), thì tên class đó **BẮT BUỘC phải đặt ở
+--     vị trí đầu tiên** sau từ khóa `extends`, nếu đặt sau interface sẽ báo lỗi biên
+--     dịch ngay! [J17]
+--   - Trong các framework như Jackson hay Spring (`ParameterizedTypeReference<ApiResponse<User>>`),
+--     khi cần giữ lại thông tin kiểu Generic lúc runtime để deserialize JSON, người ta
+--     dùng kỹ thuật Super Type Token (`new TypeReference<ApiResponse<User>>() {}`) vì
+--     lớp con ẩn danh giữ lại metadata generic của lớp cha trong constant pool của file `.class`.
+--
+-- =============================================================================
+-- JAVA-55a | Phân biệt từ khóa extends và super trong generic
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Trong Generic Wildcard, `extends` và `super` được dùng để tạo tính linh hoạt cho
+--   các tham số kiểu theo nguyên tắc vàng **PECS (Producer Extends, Consumer Super)**:
+--   - **`<? extends T>` (Upper Bounded Wildcard - Giới hạn trên):** Chấp nhận kiểu
+--     `T` hoặc bất kỳ **lớp con** nào của `T`. Nó đóng vai trò **Producer** (chỉ cung
+--     cấp dữ liệu để **ĐỌC RA** dưới kiểu `T`, và **cấm thêm** phần tử mới ngoại trừ `null`).
+--   - **`<? super T>` (Lower Bounded Wildcard - Giới hạn dưới):** Chấp nhận kiểu `T`
+--     hoặc bất kỳ **lớp cha (siêu kiểu)** nào của `T`. Nó đóng vai trò **Consumer**
+--     (tiếp nhận dữ liệu để **GHI VÀO** các phần tử kiểu `T`, còn khi đọc ra chỉ nhận
+--     được kiểu `Object`). [J18][J20]
+--
+-- Giải thích chi tiết tại sao lại có quy tắc PECS: [J18]
+--   1. Tại sao `List<? extends Number>` đọc ra được `Number` nhưng KHÔNG `add` được?
+--      - Giả sử tham số là `List<? extends Number> list`. Thực tế đối số truyền vào
+--        có thể là `List<Integer>`, cũng có thể là `List<Double>`.
+--      - Khi **ĐỌC** (`Number n = list.get(0)`): Dù danh sách thực sự chứa `Integer`
+--        hay `Double` thì mọi phần tử chắc chắn đều là `Number` -> Đọc an toàn tuyệt đối!
+--      - Khi **GHI** (`list.add(3.14)` hoặc `list.add(10)`): Compiler phải chặn ngay,
+--        vì nếu danh sách thực sự truyền vào là `List<Double>` mà cho `add(Integer)`
+--        thì sẽ làm hỏng tính an toàn kiểu của danh sách gốc!
+--   2. Tại sao `List<? super Integer>` lại `add(Integer)` được nhưng đọc ra chỉ là `Object`?
+--      - Đối số truyền vào `List<? super Integer> dest` có thể là `List<Integer>`,
+--        `List<Number>`, hoặc `List<Object>`.
+--      - Khi **GHI** (`dest.add(42)`): Vì `42` là `Integer`, nên nó đồng thời cũng là
+--        `Number` và cũng là `Object` -> Bỏ vào bất kỳ danh sách nào trong 3 loại
+--        trên đều hợp lệ 100%!
+--      - Khi **ĐỌC** (`Object o = dest.get(0)`): Compiler chỉ biết danh sách chứa một
+--        siêu kiểu nào đó của `Integer`, nên điểm chung duy nhất đảm bảo an toàn khi
+--        lấy ra chỉ là `Object`.
+--
+-- Ví dụ chuẩn mực minh họa quy tắc PECS (`copyElements` từ Producer sang Consumer):
+--   import java.util.*;
+--   public class Main {
+--       // src cung cấp dữ liệu để đọc (Producer -> extends) | dest nhận dữ liệu ghi vào (Consumer -> super)
+--       public static <T> void copyElements(List<? extends T> src, List<? super T> dest) {
+--           for (T item : src) {   // Đọc từ src ra kiểu T an toàn
+--               dest.add(item);    // Ghi kiểu T vào dest an toàn
+--           }
+--       }
+--       public static void main(String[] args) {
+--           List<Integer> ints = List.of(10, 20, 30);
+--           List<Number> nums  = new ArrayList<>();
+--           copyElements(ints, nums); // Integer extends Number, Number super Number -> Hợp lệ!
+--           System.out.println("Copied to List<Number>: " + nums); // [10, 20, 30]
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Nếu một tham số Collection trong hàm vừa cần **ĐỌC** phần tử kiểu `T` ra, vừa
+--     cần **GHI** phần tử kiểu `T` vào, thì **không dùng** `extends` hay `super` mà
+--     phải giữ nguyên kiểu bất biến `List<T>`.
+--   - Bẫy cú pháp: Từ khóa `super` CHỈ hợp lệ với Wildcard (`<? super T>`), tuyệt đối
+--     **không tồn tại** cú pháp khai báo tham số kiểu `<T super Bound>`! Ngoài ra,
+--     trong Generic, từ khóa `extends` được dùng chung cho cả việc kế thừa `class`
+--     lẫn `interface` (ví dụ `<T extends Runnable>` chứ không viết `<T implements Runnable>`). [J18]
+--
+-- =============================================================================
+-- JAVA-55b | Tạo ra 1 cấu trúc dữ liệu giống ArrayList, HashSet
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Khi được yêu cầu tự cài đặt cấu trúc dữ liệu tương đương `ArrayList` và `HashSet`,
+--   cần trình bày rõ cấu trúc lưu trữ bên dưới và các thao tác cốt lõi:
+--   1. **`MyArrayList<E>`:** Dùng mảng `Object[] data` và biến `int size`. Khi `add(e)`
+--      mà mảng đầy (`size == data.length`), cấp phát mảng mới gấp đôi bằng
+--      `Arrays.copyOf`. Khi `remove(index)`, dùng `System.arraycopy` dịch các phần tử
+--      phía sau sang trái 1 ô và gán `data[--size] = null` để GC thu hồi bộ nhớ.
+--   2. **`MyHashSet<E>`:** Dùng bảng băm gồm mảng các bucket `Node<E>[] buckets` kết
+--      hợp danh sách liên kết đơn (Separate Chaining) để xử lý va chạm băm. Khi thêm/
+--      tìm/xóa, tính mã băm trộn bit `spreadHash(key)` (hỗ trợ cả `null`), xác định
+--      bucket bằng `hash & (buckets.length - 1)`, đối chiếu bằng `equals()`, và tự
+--      động `resize()` gấp đôi bảng khi vượt ngưỡng `loadFactor = 0.75`. [J21]
+--
+-- Giải thích chi tiết các điểm kỹ thuật cốt lõi trong phần cài đặt:
+--   - Trong `MyArrayList<E>`:
+--     * Kiểm tra chỉ số hợp lệ `0 <= index < size` bằng `Objects.checkIndex(index, size)`
+--       (có sẵn từ Java 9+).
+--     * Tại sao phải gán `data[--size] = null` khi xóa? Vì nếu chỉ giảm biến `size`,
+--       ô nhớ `data[size]` vẫn giữ tham chiếu ngầm (loitering reference) tới đối
+--       tượng đã bị xóa khỏi danh sách, khiến Garbage Collector không thể giải phóng
+--       đối tượng đó (gây Memory Leak). [J21]
+--   - Trong `MyHashSet<E>`:
+--     * Hàm `spreadHash` dịch phải không dấu 16 bit rồi XOR `(h = key.hashCode()) ^ (h >>> 16)`
+--       giống hệt `HashMap` của JDK để bit cao cũng tham gia vào việc chọn bucket.
+--     * Kích thước mảng `buckets` luôn giữ là lũy thừa của 2 (`8, 16, 32...`), nhờ đó
+--       phép chia lấy dư tìm chỉ số bucket được thay bằng phép AND bit `h & (length - 1)`
+--       cực nhanh và không bao giờ trả về chỉ số âm.
+--
+-- Ví dụ code cài đặt đầy đủ cả `MyArrayList<E>` và `MyHashSet<E>` (chạy được ngay trên Java 17):
+--   import java.util.*;
+--   public class Main {
+--       // 1. Tự cài đặt MyArrayList<E>
+--       static class MyArrayList<E> {
+--           private Object[] data = new Object[4];
+--           private int size = 0;
+--
+--           public void add(E element) {
+--               if (size == data.length) {
+--                   data = Arrays.copyOf(data, data.length * 2); // Tự động nhân đôi sức chứa
+--               }
+--               data[size++] = element;
+--           }
+--           @SuppressWarnings("unchecked")
+--           public E get(int index) {
+--               Objects.checkIndex(index, size); // Java 9+ kiểm tra 0 <= index < size
+--               return (E) data[index];
+--           }
+--           public E set(int index, E element) {
+--               E old = get(index);
+--               data[index] = element;
+--               return old;
+--           }
+--           public E remove(int index) {
+--               E old = get(index);
+--               int numMoved = size - index - 1;
+--               if (numMoved > 0) {
+--                   System.arraycopy(data, index + 1, data, index, numMoved);
+--               }
+--               data[--size] = null; // Xóa tham chiếu cuối để GC thu hồi được object!
+--               return old;
+--           }
+--           public int size() { return size; }
+--       }
+--
+--       // 2. Tự cài đặt MyHashSet<E> (Separate Chaining + Rehash)
+--       static class MyHashSet<E> {
+--           private static class Node<E> {
+--               final int hash;
+--               final E key;
+--               Node<E> next;
+--               Node(int hash, E key, Node<E> next) {
+--                   this.hash = hash; this.key = key; this.next = next;
+--               }
+--           }
+--           @SuppressWarnings("unchecked")
+--           private Node<E>[] buckets = (Node<E>[]) new Node[8]; // Lũy thừa của 2
+--           private int size = 0;
+--
+--           private static int spreadHash(Object key) {
+--               int h;
+--               return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
+--           }
+--           public boolean contains(Object key) {
+--               int h = spreadHash(key);
+--               int idx = h & (buckets.length - 1);
+--               for (Node<E> e = buckets[idx]; e != null; e = e.next) {
+--                   if (e.hash == h && Objects.equals(e.key, key)) return true;
+--               }
+--               return false;
+--           }
+--           public boolean add(E key) {
+--               int h = spreadHash(key);
+--               int idx = h & (buckets.length - 1);
+--               for (Node<E> e = buckets[idx]; e != null; e = e.next) {
+--                   if (e.hash == h && Objects.equals(e.key, key)) return false; // Đã tồn tại
+--               }
+--               buckets[idx] = new Node<>(h, key, buckets[idx]);
+--               if (++size > buckets.length * 0.75f) resize();
+--               return true;
+--           }
+--           public boolean remove(Object key) {
+--               int h = spreadHash(key);
+--               int idx = h & (buckets.length - 1);
+--               Node<E> prev = null, cur = buckets[idx];
+--               while (cur != null) {
+--                   if (cur.hash == h && Objects.equals(cur.key, key)) {
+--                       if (prev == null) buckets[idx] = cur.next;
+--                       else prev.next = cur.next;
+--                       size--;
+--                       return true;
+--                   }
+--                   prev = cur; cur = cur.next;
+--               }
+--               return false;
+--           }
+--           @SuppressWarnings("unchecked")
+--           private void resize() {
+--               Node<E>[] oldTab = buckets;
+--               Node<E>[] newTab = (Node<E>[]) new Node[oldTab.length * 2];
+--               for (Node<E> head : oldTab) {
+--                   while (head != null) {
+--                       Node<E> next = head.next;
+--                       int newIdx = head.hash & (newTab.length - 1);
+--                       head.next = newTab[newIdx];
+--                       newTab[newIdx] = head;
+--                       head = next;
+--                   }
+--               }
+--               buckets = newTab;
+--           }
+--           public int size() { return size; }
+--       }
+--
+--       public static void main(String[] args) {
+--           MyArrayList<String> list = new MyArrayList<>();
+--           list.add("A"); list.add("B"); list.add("C");
+--           list.remove(1);
+--           System.out.println("MyArrayList size=" + list.size() + ", get(1)=" + list.get(1)); // C
+--
+--           MyHashSet<String> set = new MyHashSet<>();
+--           System.out.println(set.add("Java") + " / " + set.add("Java")); // true / false
+--           set.add(null);
+--           System.out.println("MyHashSet size=" + set.size() + ", has null=" + set.contains(null));
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy `Math.abs(key.hashCode()) % length` khi tự viết Hash Table: Rất nhiều người
+--     dùng `Math.abs(hash) % length` để lấy chỉ số bucket và nghĩ rằng `Math.abs` luôn
+--     dương. Thực tế, trong số nguyên 32-bit bù 2, `Math.abs(Integer.MIN_VALUE)` vẫn
+--     bằng `-2147483648` (số âm!) và phép `%` sẽ trả về chỉ số âm gây lỗi
+--     `ArrayIndexOutOfBoundsException`! Cách chuẩn là dùng `(hash & 0x7fffffff) % length`
+--     hoặc `hash & (length - 1)` với `length` là lũy thừa của 2 như code trên.
+--   - Trong thực tế, bản thân `java.util.HashSet<E>` của JDK không viết lại thuật
+--     toán băm mà bọc bên trong một `HashMap<E, Object>` (dùng một đối tượng giả
+--     `private static final Object PRESENT = new Object()` làm value chung cho mọi key).
+--
+-- =============================================================================
+-- JAVA-57 | Phân biệt List<T> và List<Object>
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Sự khác biệt cốt lõi nằm ở tính **Bất biến (Invariance)** của Generics trong Java:
+--   mặc dù `String` hay `Integer` là lớp con của `Object`, nhưng `List<String>`
+--   **KHÔNG PHẢI** là kiểu con của `List<Object>`!
+--   - **`List<Object>`:** Là một kiểu cụ thể đã cố định tham số kiểu là `Object`. Một
+--     hàm nhận `void fn(List<Object> list)` **CHỈ** chấp nhận đúng đối số có kiểu
+--     khai báo là `List<Object>`; nếu truyền `List<String>` hay `List<Integer>` vào
+--     sẽ bị **lỗi biên dịch ngay lập tức**.
+--   - **`List<T>`:** Là kiểu tham số hóa gắn với biến kiểu `<T>` của một generic
+--     method hoặc generic class. Một hàm `<T> void fn(List<T> list)` nhận được **MỌI
+--     loại danh sách** (`List<String>`, `List<Integer>`, `List<Object>`...), vì trình
+--     biên dịch sẽ suy luận `T` khớp với kiểu thực tế của danh sách truyền vào, đồng
+--     thời đảm bảo bên trong hàm chỉ đọc/ghi các phần tử đúng kiểu `T` đó. [J16][J22]
+--
+-- Giải thích chi tiết / Phân biệt mở rộng 4 kiểu hay gây nhầm lẫn:
+--   1. `List<Object>`:
+--      - Tại sao Java cấm truyền `List<String>` vào tham số `List<Object>`?
+--        Vì nếu cho phép, bên trong hàm `fn(List<Object> list)` người ta có thể gọi
+--        `list.add(123)` (hợp lệ với `List<Object>`), làm nhét một số `Integer` vào
+--        danh sách vốn là `List<String>` của nơi gọi và gây nổ `ClassCastException`
+--        khi nơi gọi đọc phần tử ra! [J22]
+--   2. `List<T>` (với `<T>` khai báo ở generic method/class):
+--      - Cho phép truyền bất kỳ `List` nào vào, đồng thời giữ được mối liên hệ kiểu:
+--        ví dụ `<T> void addElem(List<T> list, T elem)` đảm bảo danh sách kiểu gì thì
+--        phần tử thêm vào phải đúng kiểu đó.
+--   3. `List<?>` (Unbounded Wildcard - Danh sách của một kiểu chưa biết):
+--      - Là siêu kiểu chung của mọi `List<T>`: truyền được `List<String>`,
+--        `List<Integer>` vào `void fn(List<?> list)`. Tuy nhiên, bên trong hàm chỉ
+--        được đọc phần tử ra dưới dạng `Object` và **bị cấm gọi `list.add(...)`**
+--        (trừ `add(null)`). [J18]
+--   4. `List` (Raw Type - không có `<>`):
+--      - Bỏ qua toàn bộ kiểm tra kiểu Generic để tương thích ngược Java 1.4; cho phép
+--        nhét bất kỳ thứ gì vào và gây lỗi `ClassCastException` lúc runtime -> tuyệt
+--        đối không sử dụng.
+--
+-- Ví dụ minh họa sự khác biệt giữa `List<Object>`, `List<T>` và `List<?>`:
+--   import java.util.*;
+--   public class Main {
+--       static void acceptListObject(List<Object> list) {
+--           list.add(999); // Hợp lệ vì đây thực sự là List<Object>
+--       }
+--       static <T> void acceptListT(List<T> list, T extraElement) {
+--           list.add(extraElement); // Hợp lệ và an toàn kiểu vì cùng kiểu T!
+--       }
+--       static void acceptWildcard(List<?> list) {
+--           // list.add("abc"); // Lỗi biên dịch: không thể add vào List<?>
+--           System.out.println("Size = " + list.size());
+--       }
+--       public static void main(String[] args) {
+--           List<String> names = new ArrayList<>(List.of("An", "Bình"));
+--           // acceptListObject(names); // LỖI BIÊN DỊCH: List<String> không phải là List<Object>!
+--           acceptListT(names, "Chi");  // OK: T được suy luận là String
+--           acceptWildcard(names);      // OK: List<?> nhận được mọi List
+--
+--           List<Object> objs = new ArrayList<>(List.of("Text"));
+--           acceptListObject(objs);     // OK: đúng kiểu List<Object>
+--           System.out.println("names=" + names + " | objs=" + objs);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - So sánh tính Hiệp biến của Mảng vs Tính Bất biến của Generic:
+--     * Mảng là **Covariant** (Hiệp biến): `String[]` LÀ kiểu con của `Object[]`
+--       (`Object[] a = new String[2];` biên dịch thành công nhưng gán sai kiểu lúc
+--       runtime sẽ ném `ArrayStoreException`).
+--     * Generic là **Invariant** (Bất biến): `List<String>` KHÔNG có quan hệ cha-con
+--       với `List<Object>` (bắt lỗi ngay từ lúc compile, an toàn hơn mảng). Muốn tạo
+--       quan hệ cha-con cho Generic phải dùng Wildcard: `List<String>` là kiểu con
+--       của `List<? extends Object>` (tức `List<?>`). [J18][J22]
+--
+-- =============================================================================
+-- NGUỒN CHÍNH THỨC
+-- =============================================================================
+-- [J1] https://docs.oracle.com/javase/tutorial/essential/concurrency/procthread.html
+-- [J2] https://docs.oracle.com/javase/specs/jvms/se17/html/jvms-2.html#jvms-2.5
+-- [J3] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/Thread.html
+-- [J4] https://docs.oracle.com/en/java/javase/17/docs/specs/man/java.html
+-- [J5] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/CompletableFuture.html
+-- [J6] https://openjdk.org/jeps/444
+-- [J7] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/ExecutorService.html
+-- [J8] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/ThreadPoolExecutor.html
+-- [J9] https://docs.oracle.com/javase/specs/jls/se17/html/jls-17.html
+-- [J10] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/atomic/package-summary.html
+-- [J11] https://docs.oracle.com/javase/specs/jls/se17/html/jls-14.html#jls-14.19
+-- [J12] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/concurrent/locks/ReentrantLock.html
+-- [J13] https://docs.oracle.com/javase/specs/jls/se17/html/jls-12.html#jls-12.4.2
+-- [J14] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Arrays.html
+-- [J15] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/TreeMap.html
+-- [J16] https://docs.oracle.com/javase/specs/jls/se17/html/jls-4.html#jls-4.5
+-- [J17] https://docs.oracle.com/javase/tutorial/java/generics/index.html
+-- [J18] https://docs.oracle.com/javase/tutorial/java/generics/wildcards.html
+-- [J19] https://docs.oracle.com/javase/tutorial/java/generics/restrictions.html
+-- [J20] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/Collections.html#copy(java.util.List,java.util.List)
+-- [J21] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/util/ArrayList.html
+-- [J22] https://docs.oracle.com/javase/tutorial/java/generics/inheritance.html

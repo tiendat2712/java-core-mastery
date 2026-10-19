@@ -1,0 +1,585 @@
+-- PHỎNG VẤN RDBMS - SQL | 11/11 CÂU TRONG ẢNH
+-- Tài liệu ôn tập, toàn bộ là comment SQL. Ví dụ chọn PostgreSQL 16.
+-- Các đoạn minh họa theo mục, không phải một script chạy từ đầu cuối.
+-- SQL-09 dùng bảng product và dữ liệu được tạo ở SQL-08.
+-- Nguồn [S1]..[S22] ở cuối file. Đối chiếu ngày 19/10/2026.
+--
+-- =============================================================================
+-- SQL-01 | Các loại JOIN: phân biệt, ví dụ và khái niệm self-join
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   JOIN dùng để kết hợp các dòng từ hai hay nhiều nguồn dữ liệu dựa trên điều
+--   kiện liên kết: `INNER JOIN` chỉ giữ các cặp dòng khớp ở cả hai bảng; `LEFT JOIN`
+--   giữ toàn bộ bảng trái (điền `NULL` cho cột bảng phải nếu không khớp);
+--   `RIGHT JOIN` giữ toàn bộ bảng phải; `FULL OUTER JOIN` giữ toàn bộ cả hai bảng;
+--   và `CROSS JOIN` tạo tích Đề-các (N x M dòng). Còn `Self-join` không phải một
+--   từ khóa JOIN mới mà là kỹ thuật lấy một bảng JOIN với chính nó thông qua các
+--   bí danh (alias) khác nhau để truy vấn dữ liệu phân cấp hoặc so sánh nội bộ. [S1,S2]
+--
+-- Giải thích chi tiết và dữ liệu minh họa:
+--   - Nếu một dòng ở bảng này khớp với nhiều dòng ở bảng kia, dòng đó sẽ được lặp
+--     lại tương ứng với số lần khớp (JOIN không tự khử trùng). [S1,S2]
+--   - Giả sử bảng `departments(id, name)` có `(1, 'IT')`, `(2, 'HR')`;
+--     bảng `employees(id, name, department_id)` có `(10, 'An', 1)`, `(11, 'Bình', NULL)`.
+--
+-- Ví dụ kết quả của từng loại JOIN và Self-join:
+--   -- 1) So sánh 5 loại JOIN với cùng mệnh đề SELECT e.name, d.name:
+--   FROM employees e INNER JOIN departments d ON d.id = e.department_id
+--     -- -> ('An', 'IT'): chỉ lấy cặp khớp cả hai bên.
+--   FROM employees e LEFT JOIN departments d ON d.id = e.department_id
+--     -- -> ('An', 'IT'), ('Bình', NULL): giữ toàn bộ bên trái (employees).
+--   FROM employees e RIGHT JOIN departments d ON d.id = e.department_id
+--     -- -> ('An', 'IT'), (NULL, 'HR'): giữ toàn bộ bên phải (departments).
+--   FROM employees e FULL OUTER JOIN departments d ON d.id = e.department_id
+--     -- -> ('An', 'IT'), ('Bình', NULL), (NULL, 'HR'): giữ toàn bộ cả hai phía.
+--   FROM employees e CROSS JOIN departments d
+--     -- -> 4 cặp (2 x 2): mỗi nhân viên ghép với mọi phòng ban (N x M dòng).
+--
+--   -- 2) Ví dụ Self-join (bảng employees có thêm cột manager_id trỏ về employees.id):
+--   SELECT e.name AS employee, m.name AS manager
+--   FROM employees e
+--   LEFT JOIN employees m ON m.id = e.manager_id;
+--   -- Dùng self LEFT JOIN để những nhân viên cấp cao nhất (manager_id IS NULL)
+--   -- vẫn xuất hiện trong kết quả.
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy lọc ở `WHERE` làm mất tác dụng `LEFT JOIN`: Nếu viết
+--     `LEFT JOIN departments d ON d.id = e.department_id WHERE d.name = 'IT'`,
+--     các dòng không khớp (`d.name` là `NULL`) sẽ bị `WHERE` loại bỏ, biến câu
+--     truy vấn thành giống `INNER JOIN`. Muốn giữ toàn bộ nhân viên và chỉ ghép
+--     thông tin khi phòng là IT, phải đặt điều kiện trong `ON`:
+--     `ON d.id = e.department_id AND d.name = 'IT'`.
+--   - Tránh dùng `NATURAL JOIN` trong code thực tế vì nó tự suy luận điều kiện nối
+--     dựa trên mọi cột trùng tên, rất dễ đổi nghĩa âm thầm khi thêm cột mới vào bảng.
+--   - Khi chỉ cần kiểm tra một dòng cha "có tồn tại" hay "không tồn tại" bản ghi
+--     con mà không muốn bị nhân bản dòng cha, nên dùng `EXISTS` / `NOT EXISTS`
+--     (lưu ý PostgreSQL không có cú pháp câu lệnh `LEFT SEMI JOIN` tường minh).
+--   - Lưu ý đa hệ quản trị: PostgreSQL hỗ trợ trực tiếp `FULL OUTER JOIN`, trong
+--     khi MySQL không có cú pháp native `FULL OUTER JOIN`.
+--
+-- =============================================================================
+-- SQL-02 | Thiết kế vật lý quan hệ 1-1, 1-n, n-n
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Trong cơ sở dữ liệu quan hệ, ba mối quan hệ này được thiết kế vật lý bằng sự
+--   kết hợp giữa Khóa chính (PK), Khóa ngoại (FK) và ràng buộc duy nhất (UNIQUE):
+--   - Quan hệ 1-1: Đặt FK ở một bảng kèm ràng buộc `UNIQUE` (hoặc dùng chung khóa
+--     chính - shared PK: cột PK của bảng phụ đồng thời là FK trỏ sang bảng chính).
+--   - Quan hệ 1-n: Đặt cột FK ở bảng phía "nhiều" (`n`) trỏ về PK của bảng phía
+--     "một" (`1`), và không đặt `UNIQUE` đơn lẻ trên cột FK đó.
+--   - Quan hệ n-n: Tách thêm một bảng trung gian (junction/join table) chứa hai
+--     cột FK trỏ về hai bảng chính, đồng thời đặt PK ghép (hoặc `UNIQUE` ghép)
+--     trên cặp cột đó để chống trùng lặp. [S3,S4]
+--
+-- Giải thích chi tiết từng thiết kế:
+--   - Với 1-1 dùng shared PK hoặc FK UNIQUE: Đảm bảo mỗi bản ghi bảng phụ gắn với
+--     đúng 1 bản ghi bảng chính, và mỗi bản ghi bảng chính có tối đa 1 bản ghi
+--     bảng phụ (quan hệ thực chất là 1 - 0..1 ở tầng ràng buộc bảng).
+--   - Với n-n: Bảng trung gian còn là nơi lưu thêm các thuộc tính riêng của mối
+--     quan hệ (ví dụ: ngày đăng ký, vai trò, số lượng).
+--
+-- Ví dụ DDL thiết kế bảng cho 1-1, 1-n và n-n:
+--   -- 1) Quan hệ 1-1 (dùng Shared PK giữa app_user và user_profile):
+--   CREATE TABLE app_user (id bigint PRIMARY KEY, name text NOT NULL);
+--   CREATE TABLE user_profile (
+--       user_id bigint PRIMARY KEY REFERENCES app_user(id),
+--       birthday date
+--   );
+--
+--   -- 2) Quan hệ 1-n (một app_user có nhiều shop_order):
+--   CREATE TABLE shop_order (
+--       id bigint PRIMARY KEY,
+--       user_id bigint NOT NULL REFERENCES app_user(id)
+--   );
+--
+--   -- 3) Quan hệ n-n (một user học nhiều course, một course có nhiều user):
+--   CREATE TABLE course (id bigint PRIMARY KEY, title text NOT NULL);
+--   CREATE TABLE enrollment (
+--       user_id bigint REFERENCES app_user(id),
+--       course_id bigint REFERENCES course(id),
+--       enrolled_at date NOT NULL,
+--       PRIMARY KEY (user_id, course_id)
+--   );
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy quan hệ 1-1 bắt buộc hai chiều: Thiết kế `user_profile` có FK/PK trỏ về
+--     `app_user` vẫn cho phép một `app_user` tồn tại mà chưa có `user_profile`.
+--     Nếu nghiệp vụ bắt buộc 100% user lúc nào cũng phải có profile ngay khi tạo,
+--     chỉ thêm FK UNIQUE là chưa đủ mà phải cân nhắc gộp chung vào 1 bảng hoặc
+--     ràng buộc ở tầng transaction/trigger/constraint deferrable.
+--   - Ở bảng trung gian `enrollment`, nếu dự án dùng một cột khóa tự tăng riêng
+--     (`id bigint PRIMARY KEY`), vẫn phải nhớ đánh `UNIQUE (user_id, course_id)`
+--     nếu nghiệp vụ cấm một người đăng ký trùng một khóa học hai lần.
+--   - Chính sách `ON DELETE` (`RESTRICT`/`NO ACTION`, `CASCADE`, `SET NULL`) phải
+--     chọn theo đúng vòng đời nghiệp vụ (ví dụ không tùy tiện gắn `ON DELETE CASCADE`
+--     vào bảng đơn hàng/hóa đơn tài chính), và nhớ tạo index cho các cột FK theo
+--     nhu cầu truy vấn thực tế.
+--
+-- =============================================================================
+-- SQL-03 | Có bắt buộc một bảng phải có khóa chính không? Vì sao?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Về mặt cú pháp của RDBMS (như PostgreSQL), một bảng KHÔNG bắt buộc phải khai
+--   báo `PRIMARY KEY` — lệnh `CREATE TABLE` không có PK vẫn chạy hợp lệ. Tuy nhiên,
+--   trong thiết kế thực tế, hầu hết các bảng dữ liệu nghiệp vụ đều NÊN có khóa
+--   chính để định danh duy nhất từng bản ghi, làm đích cho khóa ngoại tham chiếu
+--   và tránh rủi ro cập nhật/xóa nhầm các dòng bị trùng lặp. [S4]
+--
+-- Giải thích chi tiết:
+--   - Khi bảng có PK, hệ quản trị đảm bảo giá trị khóa vừa `UNIQUE` vừa `NOT NULL`,
+--     tự động tạo unique index giúp tra cứu/cập nhật/xóa chính xác từng dòng.
+--   - Nếu không có định danh duy nhất, hai dòng có mọi cột giống hệt nhau vẫn có
+--     thể được chèn vào bảng, khiến lệnh `UPDATE`/`DELETE` theo giá trị cột sẽ tác
+--     động lên cả hai dòng cùng lúc.
+--
+-- Ví dụ bảng staging không cần PK và bảng nghiệp vụ chuẩn:
+--   -- Hợp lệ về cú pháp (đôi khi dùng cho bảng tạm/staging nạp dữ liệu thô):
+--   CREATE TABLE import_staging (raw_value text);
+--
+--   -- Bảng nghiệp vụ chuẩn luôn nên có PK rõ ràng:
+--   CREATE TABLE customer (
+--       id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+--       email text NOT NULL UNIQUE
+--   );
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Khóa chính không bắt buộc phải là một cột số nguyên tự tăng (surrogate key):
+--     nó hoàn toàn có thể là một khóa tự nhiên (natural key) hoặc khóa ghép từ
+--     nhiều cột (composite primary key).
+--   - Bẫy liên hệ với JPA/Hibernate: Đừng nhầm lẫn việc Database cho phép tạo bảng
+--     không có PK với việc JPA cho phép `@Entity` không có `@Id`. Trong JPA, mọi
+--     `@Entity` bắt buộc phải khai báo định danh (`@Id` hoặc `@EmbeddedId`), kể cả
+--     khi bảng vật lý bên dưới DB chưa gắn ràng buộc `PRIMARY KEY`.
+--
+-- =============================================================================
+-- SQL-04 | Mục đích PK, FK; một bảng có nhiều PK/FK được không?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   - Mục đích: `PRIMARY KEY` (PK) dùng để định danh duy nhất và khác `NULL` cho
+--     mỗi dòng trong bảng; còn `FOREIGN KEY` (FK) dùng để đảm bảo toàn vẹn tham
+--     chiếu (referential integrity) giữa cột đang xét với cột khóa ở bảng được
+--     tham chiếu.
+--   - Số lượng trên một bảng: Một bảng chỉ có tối đa MỘT ràng buộc `PRIMARY KEY`
+--     (nhưng khóa chính đó có thể ghép từ nhiều cột - composite PK); ngược lại,
+--     một bảng có thể có NHIỀU ràng buộc `FOREIGN KEY` khác nhau (và mỗi FK cũng
+--     có thể gồm một hoặc nhiều cột). [S3,S4]
+--
+-- Giải thích chi tiết:
+--   - Ngoài 1 `PRIMARY KEY` duy nhất, một bảng có thể khai báo nhiều ràng buộc
+--     `UNIQUE` khác nhau để biểu diễn các khóa ứng viên (candidate keys) khác.
+--   - Khai báo `FOREIGN KEY` chỉ kiểm tra tính hợp lệ của giá trị tham chiếu chứ
+--     KHÔNG tự động biến cột đó thành `UNIQUE` hay `NOT NULL`.
+--   - Trong PostgreSQL, đích của một `FOREIGN KEY` phải là `PRIMARY KEY` hoặc một
+--     ràng buộc `UNIQUE` phù hợp trên bảng được tham chiếu (không bắt buộc lúc nào
+--     cũng phải trỏ đúng vào PK). [S3,S4]
+--
+-- Ví dụ một bảng có 1 PK ghép và nhiều FK:
+--   -- Bảng enrollment (ở SQL-02) có 1 PRIMARY KEY ghép (user_id, course_id)
+--   -- và 2 FOREIGN KEY độc lập trỏ tới app_user(id) và course(id).
+--   -- Hoặc bảng đơn hàng có nhiều FK trỏ tới các bảng khác nhau:
+--   CREATE TABLE purchase_order (
+--       id bigint PRIMARY KEY,
+--       buyer_id bigint NOT NULL REFERENCES app_user(id),
+--       approver_id bigint REFERENCES employees(id)
+--   );
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Ràng buộc FK không phải chỉ là "gợi ý để viết JOIN": DB thực thi kiểm tra
+--     toàn vẹn dữ liệu thật sự khi `INSERT`/`UPDATE` bảng con hoặc `UPDATE`/`DELETE`
+--     bảng cha theo chính sách `ON DELETE` / `ON UPDATE` (`RESTRICT`, `NO ACTION`,
+--     `CASCADE`, `SET NULL`, `SET DEFAULT`). Với FK nhiều cột có chứa `NULL`, hành
+--     vi kiểm tra còn phụ thuộc chế độ `MATCH SIMPLE` / `MATCH FULL`.
+--   - Bẫy hiệu năng rất hay hỏi: PostgreSQL tự động tạo unique index cho `PRIMARY KEY`
+--     và `UNIQUE`, nhưng KHÔNG tự động tạo index cho cột `FOREIGN KEY` ở bảng con!
+--     Do đó, nếu bảng con thường xuyên được JOIN theo FK hoặc bảng cha thường có
+--     thao tác xóa/cập nhật khóa, lập trình viên cần chủ động tạo index trên cột FK.
+--
+-- =============================================================================
+-- SQL-05 | Index là gì? Khi nào cần tạo index?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Index (chỉ mục) là cấu trúc dữ liệu phụ trợ (phổ biến nhất là B-tree) lưu trữ
+--   giá trị của một hoặc nhiều cột kèm con trỏ tới dòng dữ liệu, giúp Database tìm
+--   kiếm, lọc và sắp xếp nhanh mà không phải quét tuần tự toàn bộ bảng. Ta nên tạo
+--   index cho các cột thường xuyên xuất hiện trong điều kiện lọc (`WHERE`), điều
+--   kiện nối (`JOIN`), sắp xếp kèm giới hạn (`ORDER BY ... LIMIT`) hoặc để cưỡng
+--   chế tính duy nhất, đặc biệt khi câu truy vấn có độ chọn lọc cao (chỉ lấy một
+--   tập nhỏ trong bảng lớn). [S5,S6,S7]
+--
+-- Giải thích chi tiết về đánh đổi (trade-off):
+--   - Lợi ích: Giảm đáng kể số trang dữ liệu phải đọc khi tra cứu/sắp xếp đúng
+--     theo thứ tự khóa của index.
+--   - Chi phí: Tốn thêm dung lượng lưu trữ (đĩa và bộ nhớ đệm) và làm chậm các
+--     thao tác ghi (`INSERT`, `UPDATE`, `DELETE`) vì DB phải cập nhật cả bảng lẫn
+--     các index liên quan.
+--
+-- Ví dụ tạo Composite Index phục vụ lọc theo khách hàng và lấy đơn mới nhất:
+--   CREATE INDEX idx_orders_customer_date
+--       ON orders(customer_id, created_at DESC);
+--
+--   SELECT id, created_at
+--   FROM orders
+--   WHERE customer_id = 42
+--   ORDER BY created_at DESC
+--   LIMIT 20;
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Thứ tự cột trong Composite Index (`(customer_id, created_at DESC)`) cực kỳ
+--     quan trọng: index trên rất tối ưu khi lọc theo `customer_id` (hoặc cả
+--     `customer_id` và `created_at`), nhưng không thể suy ra rằng nó sẽ tối ưu cho
+--     mọi câu truy vấn chỉ lọc đơn độc theo cột thứ hai (`created_at`). [S6]
+--   - Có index KHÔNG đồng nghĩa Query Optimizer bắt buộc phải dùng index: nếu bảng
+--     nhỏ hoặc điều kiện `WHERE` lấy ra phần lớn số dòng của bảng, Optimizer chọn
+--     Sequential Scan (`Seq Scan`) thường sẽ nhanh hơn đọc qua index.
+--   - Bẫy làm mất khả năng dùng index thông thường: Bọc hàm hoặc ép kiểu trực tiếp
+--     lên cột được đánh index (như `WHERE LOWER(email) = ...` hoặc
+--     `WHERE DATE(created_at) = ...`) sẽ khiến B-tree index thông thường trên cột
+--     đó không khớp trực tiếp được; lúc này cần viết lại biểu thức điều kiện hoặc
+--     tạo Expression Index (và có thể kết hợp Partial Index cho tập dữ liệu con
+--     hay truy vấn).
+--
+-- =============================================================================
+-- SQL-06 | Truy vấn chậm: kinh nghiệm và cách xử lý bằng execution plan
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Khi xử lý một câu truy vấn chậm (nếu chưa từng trực tiếp xử lý sự cố trên
+--   production thì trình bày rõ đây là quy trình chuẩn em áp dụng để tái hiện và
+--   tối ưu), em thực hiện theo 5 bước: (1) Khoanh vùng và thu thập ngữ cảnh câu
+--   SQL; (2) Chạy `EXPLAIN` và `EXPLAIN (ANALYZE, BUFFERS)` trên môi trường phù hợp
+--   để đọc Execution Plan; (3) Tìm nút cổ chai (bottleneck) qua chênh lệch số dòng
+--   ước lượng/thực tế, kiểu quét, kiểu JOIN, sort tràn đĩa và lượng buffer I/O;
+--   (4) Tối ưu câu query hoặc index/thống kê đúng nguyên nhân; (5) Đo đạc lại để
+--   xác nhận hiệu năng và tính đúng đắn. [S8,S9]
+--
+-- Giải thích chi tiết 5 bước phân tích bằng Execution Plan:
+--   1. Ghi nhận câu SQL, bộ tham số thực tế, kích thước dữ liệu, tần suất gọi và
+--      mức độ đồng thời; phân biệt rõ thời gian chạy trong DB với độ trễ mạng,
+--      xử lý ở tầng ứng dụng hay thời gian chờ khóa (lock waiting).
+--   2. Phân biệt `EXPLAIN` và `EXPLAIN ANALYZE`:
+--      - `EXPLAIN`: Chỉ lập kế hoạch dự kiến, không thực thi câu lệnh; con số
+--        `cost` là đơn vị chi phí ước lượng tương đối của planner, KHÔNG phải mili-giây.
+--      - `EXPLAIN (ANALYZE, BUFFERS)`: Thực sự chạy câu lệnh và trả về thời gian
+--        thực tế (`actual time`), số dòng thực tế (`rows`), số vòng lặp (`loops`)
+--        và số block đọc từ bộ nhớ/đĩa (`shared hit/read`). [S8,S9]
+--   3. Đọc các dấu hiệu bất thường trên Plan:
+--      - `estimated rows` lệch xa `actual rows` (thống kê bị cũ hoặc điều kiện phức tạp).
+--      - Node đọc/lọc bỏ quá nhiều dòng (`Rows Removed by Filter` lớn), `Sort Method:
+--        external merge Disk` (thiếu `work_mem`), hoặc `Nested Loop` bị lặp số
+--        `loops` quá lớn.
+--   4. Khắc phục theo đúng nguyên nhân: Tạo/chỉnh index, viết lại điều kiện cho
+--      dùng được index, bỏ `SELECT *`, giảm dữ liệu thừa, sửa điều kiện JOIN, cập
+--      nhật thống kê (`ANALYZE`), hoặc xử lý lỗi N+1 từ tầng ORM.
+--   5. Chạy lại `EXPLAIN (ANALYZE, BUFFERS)` với cùng điều kiện để đối chiếu.
+--
+-- Ví dụ đọc plan và viết lại điều kiện thời gian để tận dụng B-tree index:
+--   -- 1) Kiểm tra kế hoạch thực thi:
+--   EXPLAIN SELECT id FROM orders WHERE customer_id = 42;
+--   EXPLAIN (ANALYZE, BUFFERS)
+--   SELECT id FROM orders WHERE customer_id = 42;
+--
+--   -- 2) Tối ưu điều kiện lọc ngày (tránh bọc hàm DATE() lên cột created_at):
+--   -- Thay vì: WHERE DATE(created_at) = DATE '2026-10-01'
+--   -- Viết thành khoảng nửa mở để B-tree index trên created_at có cơ hội được dùng:
+--   SELECT id, total
+--   FROM orders
+--   WHERE created_at >= TIMESTAMP '2026-10-01 00:00:00'
+--     AND created_at <  TIMESTAMP '2026-10-02 00:00:00';
+--   -- (Lưu ý: nếu cột là timestamptz, cần xác định rõ múi giờ nghiệp vụ trước).
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Cách đọc `actual time` khi `loops > 1`: Giá trị `actual time` và `rows` hiển
+--     thị ở một node có `loops > 1` là giá trị TRUNG BÌNH cho mỗi vòng lặp (phải
+--     nhân với `loops` mới ra tổng thời gian của node đó), và thời gian của node
+--     cha đã bao gồm thời gian của các node con bên dưới nên không cộng dồn ngang. [S8]
+--   - Cảnh báo an toàn: `EXPLAIN ANALYZE` trên câu lệnh `INSERT` / `UPDATE` /
+--     `DELETE` sẽ THỰC SỰ thay đổi dữ liệu! Nếu cần đo trên môi trường thử nghiệm,
+--     phải bọc trong `BEGIN; EXPLAIN ANALYZE ...; ROLLBACK;` và lưu ý `ROLLBACK`
+--     cũng không hoàn tác được mọi hiệu ứng phụ bên ngoài transaction (như sequence).
+--   - Không khẳng định máy móc rằng mọi `Seq Scan` đều là lỗi hay cứ thêm index là
+--     nhanh hơn.
+--
+-- =============================================================================
+-- SQL-07 | Partition và view là gì? Phân biệt
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Partition` (phân vùng bảng) và `View` (khung nhìn) giải quyết hai bài toán
+--   hoàn toàn khác nhau: `Partition` là kỹ thuật chia nhỏ dữ liệu lưu trữ vật lý
+--   của một bảng logic lớn thành nhiều bảng con vật lý (theo `RANGE`, `LIST` hoặc
+--   `HASH`) để tối ưu quản lý dữ liệu lớn và bỏ qua các phân vùng không cần đọc
+--   (partition pruning); trong khi đó, `View` (thông thường) chỉ là một câu truy
+--   vấn được đặt tên và lưu lại dưới dạng bảng ảo, hoàn toàn không lưu trữ dữ liệu
+--   vật lý riêng. [S10,S11]
+--
+-- Giải thích chi tiết:
+--   - Partitioning: Ứng dụng vẫn truy vấn trên tên bảng cha logic, nhưng bên dưới
+--     DB định tuyến dữ liệu vào từng partition con. Rất hiệu quả cho bảng lịch sử/
+--     sự kiện lớn cần lưu trữ hoặc xóa/tách dữ liệu cũ theo từng kỳ (tháng/năm). [S10]
+--   - Ordinary View: Đóng gói câu SELECT phức tạp để tái sử dụng, đơn giản hóa
+--     giao diện truy vấn hoặc giới hạn các cột/dòng mà một nhóm người dùng được
+--     phép nhìn thấy. Bản thân ordinary view không tự làm câu query chạy nhanh hơn. [S11]
+--   - Materialized View: Khác với view thường, `MATERIALIZED VIEW` có lưu kết quả
+--     truy vấn xuống đĩa nên đọc nhanh hơn cho các báo cáo nặng, nhưng dữ liệu sẽ
+--     cũ đi cho tới khi chạy lệnh `REFRESH MATERIALIZED VIEW`. [S12]
+--
+-- Ví dụ khai báo Partition và View trong PostgreSQL:
+--   -- 1) Ví dụ Range Partition theo ngày phát sinh sự kiện:
+--   CREATE TABLE sale_event (id bigint, occurred_on date NOT NULL)
+--       PARTITION BY RANGE (occurred_on);
+--   CREATE TABLE sale_event_2026_10 PARTITION OF sale_event
+--       FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
+--
+--   -- 2) Ví dụ tạo View lọc các đơn hàng đã thanh toán:
+--   CREATE VIEW paid_orders AS
+--   SELECT id, customer_id, total FROM orders WHERE status = 'PAID';
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Câu chốt dễ nhớ khi phỏng vấn: "Partition tổ chức cách LƯU TRỮ dữ liệu vật lý,
+--     còn View tổ chức cách NHÌN / TRUY VẤN dữ liệu."
+--   - Khi dùng Partition, phải đảm bảo tạo sẵn partition phù hợp (hoặc `DEFAULT`
+--     partition) cho dữ liệu mới chèn vào, nếu không lệnh `INSERT` nằm ngoài dải
+--     sẽ báo lỗi; đồng thời chia partition không thay thế hoàn toàn nhu cầu đánh
+--     index bên trong từng partition.
+--
+-- =============================================================================
+-- SQL-08 | Trigger là gì? Cho ví dụ
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Trigger là cơ chế trong Database tự động kích hoạt một hàm xử lý (trigger
+--   function) khi xảy ra một sự kiện thay đổi dữ liệu đã khai báo trước (`INSERT`,
+--   `UPDATE`, `DELETE`, hoặc `TRUNCATE`) trên một bảng hoặc view. PostgreSQL hỗ trợ
+--   trigger chạy `BEFORE`, `AFTER`, hoặc `INSTEAD OF` (cho view), ở cấp độ từng
+--   dòng (`FOR EACH ROW`) hoặc cấp độ cả câu lệnh (`FOR EACH STATEMENT`). [S13]
+--
+-- Giải thích chi tiết:
+--   - Trong trigger mức dòng (`FOR EACH ROW`), ta có thể truy cập biến `NEW` (chứa
+--     dữ liệu dòng mới đối với `INSERT`/`UPDATE`) và `OLD` (chứa dữ liệu dòng cũ
+--     đối với `UPDATE`/`DELETE`).
+--   - Trigger chạy bên trong cùng một transaction với câu lệnh đã kích hoạt nó:
+--     nếu trigger ném lỗi hoặc câu lệnh gốc bị rollback, mọi thay đổi trong trigger
+--     cũng được rollback theo. [S13]
+--
+-- Ví dụ Trigger tự động cập nhật cột `updated_at` trước mỗi lần sửa sản phẩm:
+--   CREATE TABLE product (
+--       id bigint PRIMARY KEY,
+--       name text NOT NULL,
+--       updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
+--   );
+--
+--   CREATE FUNCTION stamp_product_update() RETURNS trigger
+--   LANGUAGE plpgsql AS $$
+--   BEGIN
+--       NEW.updated_at := clock_timestamp();
+--       RETURN NEW;
+--   END;
+--   $$;
+--
+--   CREATE TRIGGER trg_product_updated_at
+--   BEFORE UPDATE ON product
+--   FOR EACH ROW EXECUTE FUNCTION stamp_product_update();
+--
+--   -- Kiểm tra hoạt động:
+--   INSERT INTO product(id, name) VALUES (1, 'Bàn phím');
+--   UPDATE product SET name = 'Bàn phím cơ' WHERE id = 1;
+--   SELECT id, name, updated_at FROM product WHERE id = 1;
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Khi nào nên và không nên dùng Trigger: Trigger hữu ích cho việc ghi audit log,
+--     cập nhật dấu thời gian hoặc thực thi quy tắc bắt buộc cho mọi ứng dụng kết
+--     nối vào DB. Tuy nhiên, không nên lạm dụng trigger để nhồi nhét logic nghiệp
+--     vụ phức tạp vì trigger chạy "ngầm" (gây hiệu ứng phụ khó đoán khi đọc code
+--     Java, khó debug, có nguy cơ gọi đệ quy và làm tăng chi phí trên từng dòng).
+--   - Với các ràng buộc dữ liệu chuẩn như `NOT NULL`, `UNIQUE`, `CHECK`, `FOREIGN KEY`,
+--     luôn ưu tiên dùng constraint khai báo sẵn của DB thay vì tự viết trigger.
+--
+-- =============================================================================
+-- SQL-09 | Phân biệt cách dùng function và procedure
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Trong PostgreSQL, sự khác biệt cốt lõi nằm ở mục đích sử dụng, cách gọi và khả
+--   năng quản lý transaction: `Function` có kiểu trả về trong khai báo (`RETURNS`,
+--   có thể trả về giá trị đơn, bảng/tập dòng hoặc `void`), thường được gọi ngay
+--   bên trong biểu thức hoặc câu lệnh `SELECT` và KHÔNG được phép tự `COMMIT` hay
+--   `ROLLBACK` transaction; ngược lại, `Procedure` được gọi độc lập bằng lệnh
+--   `CALL` để thực thi một quy trình xử lý (có thể trả giá trị qua tham số `OUT`/
+--   `INOUT`) và CÓ THỂ điều khiển transaction (`COMMIT`/`ROLLBACK`) trong những
+--   ngữ cảnh được phép. [S14,S15,S16]
+--
+-- Giải thích chi tiết (trọng tâm PostgreSQL 16):
+--   - Function: Phù hợp cho việc đóng gói công thức tính toán hoặc truy vấn trả về
+--     dữ liệu để tái sử dụng trong các câu lệnh SQL. [S14]
+--   - Procedure: Phù hợp cho các tác vụ thực thi chuỗi thao tác hoặc xử lý theo lô
+--     cần kiểm soát giao dịch. [S15,S16]
+--
+-- Ví dụ tạo và sử dụng Function so với Procedure:
+--   -- 1) Function tính giá sau thuế và gọi trong SELECT:
+--   CREATE FUNCTION price_with_tax(p numeric, rate numeric)
+--   RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
+--       SELECT round(p * (1 + rate), 2);
+--   $$;
+--   SELECT price_with_tax(100000, 0.08); -- Kết quả: 108000.00
+--
+--   -- 2) Procedure đổi tên sản phẩm (dùng bảng product ở SQL-08) và gọi bằng CALL:
+--   CREATE PROCEDURE rename_product(p_id bigint, p_name text)
+--   LANGUAGE plpgsql AS $$
+--   BEGIN
+--       UPDATE product SET name = p_name WHERE id = p_id;
+--   END;
+--   $$;
+--   CALL rename_product(1, 'Chuột không dây');
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy phát biểu tuyệt đối về Function trong PostgreSQL: Không nên nói "Function
+--     trong PostgreSQL luôn chỉ được đọc dữ liệu (read-only)", vì thực tế một
+--     function `VOLATILE` trong PostgreSQL vẫn có thể chứa câu lệnh sửa dữ liệu
+--     tùy ngôn ngữ và cách gọi — điểm cấm cứng của Function là không được tự
+--     `COMMIT`/`ROLLBACK`.
+--   - Bẫy về Transaction trong Procedure: Ngay cả với `Procedure`, nếu lệnh `CALL`
+--     được gọi bên trong một khối transaction đã mở sẵn từ bên ngoài (`BEGIN ...`),
+--     thì procedure đó cũng KHÔNG được phép tự `COMMIT`/`ROLLBACK`. [S16]
+--   - Luôn nêu rõ hệ quản trị đang nói tới: Quy tắc giữa Function và Procedure có
+--     khác biệt giữa các hệ DB (ví dụ SQL Server gọi stored procedure bằng `EXEC`/
+--     `EXECUTE` và áp đặt hạn chế side-effect lên User-Defined Function rất chặt).
+--
+-- =============================================================================
+-- SQL-10 | CTE và SubQuery là gì? Sử dụng khi nào?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   - `CTE` (Common Table Expression) là một tập kết quả tạm thời được đặt tên bằng
+--     mệnh đề `WITH` ở đầu câu lệnh, chỉ tồn tại trong phạm vi thực thi của một
+--     statement đó; CTE giúp chia nhỏ truy vấn phức tạp thành các bước dễ đọc,
+--     cho phép tham chiếu lại nhiều lần trong cùng câu lệnh và hỗ trợ truy vấn đệ
+--     quy (`WITH RECURSIVE`) cho dữ liệu dạng cây/đồ thị. [S17]
+--   - `SubQuery` (truy vấn con) là một câu truy vấn được viết lồng trực tiếp bên
+--     trong một câu truy vấn khác (tại mệnh đề `FROM` dưới dạng derived table, tại
+--     `WHERE`/`HAVING` cùng `IN`/`EXISTS`, hoặc làm scalar subquery trong `SELECT`). [S18]
+--
+-- Giải thích khi nào dùng gì:
+--   - Dùng `CTE` khi câu query có nhiều bước tổng hợp trung gian, cần tái sử dụng
+--     cùng một tập kết quả con ở nhiều nơi trong câu query chính, hoặc cần duyệt
+--     cây phân cấp bằng `WITH RECURSIVE`.
+--   - Dùng `SubQuery` khi logic lọc/kiểm tra ngắn gọn tại chỗ (như `EXISTS` /
+--     `NOT EXISTS` hoặc một derived table đơn giản dùng một lần).
+--
+-- Ví dụ so sánh CTE, Derived Table (Subquery ở FROM) và Correlated Subquery:
+--   -- 1) Dùng CTE tính tổng chi tiêu rồi lọc khách hàng chi trên 1,000,000:
+--   WITH customer_spending AS (
+--       SELECT customer_id, SUM(total) AS spent
+--       FROM orders
+--       WHERE status = 'PAID'
+--       GROUP BY customer_id
+--   )
+--   SELECT customer_id, spent
+--   FROM customer_spending
+--   WHERE spent > 1000000;
+--
+--   -- 2) Cùng bài toán trên nhưng viết bằng Subquery ở FROM (Derived Table):
+--   SELECT s.customer_id, s.spent
+--   FROM (
+--       SELECT customer_id, SUM(total) AS spent
+--       FROM orders
+--       WHERE status = 'PAID'
+--       GROUP BY customer_id
+--   ) s
+--   WHERE s.spent > 1000000;
+--
+--   -- 3) Correlated Subquery (truy vấn con tương quan) với EXISTS:
+--   SELECT c.id
+--   FROM customers c
+--   WHERE EXISTS (
+--       SELECT 1 FROM orders o WHERE o.customer_id = c.id
+--   );
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy `NOT IN` khi có `NULL`: Nếu tập kết quả của subquery trong `WHERE id NOT IN (...)`
+--     có chứa dù chỉ một giá trị `NULL`, phép so sánh sẽ rơi vào `UNKNOWN` và làm
+--     câu truy vấn trả về 0 dòng! Do đó, khi kiểm tra "không tồn tại bản ghi liên
+--     quan", dùng `NOT EXISTS` an toàn và rõ nghĩa hơn rất nhiều.
+--   - Bẫy Scalar Subquery: Một scalar subquery (ví dụ đặt ở mệnh đề `SELECT` hoặc
+--     vế phải phép `=`) chỉ được phép trả về tối đa 1 dòng và 1 cột; nếu trả về
+--     nhiều hơn 1 dòng lúc chạy sẽ ném lỗi runtime.
+--   - Không hiểu nhầm rằng CTE là bảng tạm tồn tại qua nhiều câu lệnh hay mặc định
+--     lúc nào cũng nhanh hơn subquery: trong PostgreSQL hiện đại, Optimizer có thể
+--     tự động gộp (inline) hoặc lưu tạm (materialize) CTE tùy câu truy vấn, và lập
+--     trình viên có thể chỉ định `AS MATERIALIZED` / `AS NOT MATERIALIZED` khi cần
+--     kiểm soát kế hoạch thực thi. [S17]
+--
+-- =============================================================================
+-- SQL-11 | Phân biệt DELETE và TRUNCATE
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `DELETE` là câu lệnh xóa dữ liệu theo từng dòng có thể kèm điều kiện lọc `WHERE`
+--   (nếu bỏ `WHERE` sẽ xóa hết các dòng), kích hoạt các `ON DELETE` trigger và giữ
+--   nguyên giá trị hiện tại của bộ đếm tự tăng (sequence/identity). Ngược lại,
+--   `TRUNCATE` là câu lệnh làm rỗng nhanh toàn bộ một hoặc nhiều bảng mà không hỗ
+--   trợ `WHERE`, giải phóng trang dữ liệu thay vì quét xóa từng dòng, giữ lại cấu
+--   trúc bảng và không kích hoạt `ON DELETE` trigger (nhưng có thể kích hoạt
+--   `ON TRUNCATE` trigger trong PostgreSQL). [S19,S20]
+--
+-- Giải thích chi tiết và so sánh đa hệ quản trị (điểm ăn điểm khi phỏng vấn):
+--   - Trên PostgreSQL 16:
+--     + Khả năng Rollback: Cả `DELETE` lẫn `TRUNCATE` ĐỀU là transactional (có thể
+--       `ROLLBACK` nếu nằm trong một khối transaction chưa commit). [S19,S20]
+--     + Cơ chế Khóa (Locking): `DELETE` lấy khóa mức bảng nhẹ hơn (`ROW EXCLUSIVE`)
+--       và khóa trên từng dòng bị xóa, cho phép đọc/ghi đồng thời tốt hơn; còn
+--       `TRUNCATE` yêu cầu khóa độc quyền `ACCESS EXCLUSIVE` (chặn mọi thao tác
+--       đọc/ghi khác trên bảng đó). [S20]
+--     + Sequence / Identity: `DELETE` không reset sequence; `TRUNCATE` trong
+--       PostgreSQL mặc định là `CONTINUE IDENTITY` (giữ nguyên giá trị sequence),
+--       chỉ khi chỉ định `RESTART IDENTITY` thì mới đưa sequence gắn với bảng về
+--       giá trị ban đầu. [S20]
+--     + Ràng buộc Khóa ngoại (FK): Bảng đang được bảng khác tham chiếu qua FK sẽ
+--       không cho `TRUNCATE` đơn lẻ trừ khi liệt kê cả bảng con vào cùng lệnh
+--       `TRUNCATE` hoặc dùng tùy chọn `CASCADE` (cần hết sức cẩn thận vì `CASCADE`
+--       sẽ làm rỗng luôn các bảng con liên quan). [S20]
+--   - So sánh với MySQL 8.4 và SQL Server:
+--     + MySQL 8.4 (InnoDB): `TRUNCATE TABLE` gây ra implicit commit nên KHÔNG thể
+--       rollback như `DELETE`; tự động reset `AUTO_INCREMENT`. [S21]
+--     + SQL Server: `TRUNCATE TABLE` CÓ THỂ rollback nếu bọc trong transaction
+--       thông thường, và tự động reset cột `IDENTITY` về giá trị seed. [S22]
+--
+-- Ví dụ sử dụng DELETE và TRUNCATE trong PostgreSQL:
+--   -- 1) Xóa có điều kiện và lấy lại ID vừa xóa bằng DELETE ... RETURNING:
+--   DELETE FROM product WHERE id = 1 RETURNING id;
+--
+--   -- 2) Làm rỗng toàn bộ bảng:
+--   TRUNCATE TABLE product;
+--
+--   -- 3) Minh họa TRUNCATE kèm RESTART IDENTITY vẫn rollback được trong PostgreSQL:
+--   BEGIN;
+--   TRUNCATE TABLE product RESTART IDENTITY;
+--   ROLLBACK;
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy kinh điển: Tuyệt đối không trả lời rập khuôn rằng "`TRUNCATE` không bao
+--     giờ rollback được và không ghi bất kỳ log nào" — trên PostgreSQL và SQL Server,
+--     `TRUNCATE` vẫn ghi nhận thay đổi cấp độ trang/extent vào transaction log (WAL)
+--     để đảm bảo tính toàn vẹn ACID và hoàn toàn rollback được trong transaction.
+--   - Mẹo trả lời chuyên nghiệp: Khi nhận câu hỏi này, luôn nêu rõ sự khác biệt
+--     chung trước, sau đó chủ động phân nhánh theo hệ quản trị (PostgreSQL / SQL
+--     Server vs MySQL) khi nói tới khả năng `ROLLBACK` và hành vi reset `IDENTITY`.
+--
+-- =============================================================================
+-- NGUỒN CHÍNH THỨC
+-- =============================================================================
+-- [S1] https://www.postgresql.org/docs/16/queries-table-expressions.html
+-- [S2] https://www.postgresql.org/docs/16/tutorial-join.html
+-- [S3] https://www.postgresql.org/docs/16/ddl-constraints.html
+-- [S4] https://www.postgresql.org/docs/16/sql-createtable.html
+-- [S5] https://www.postgresql.org/docs/16/indexes.html
+-- [S6] https://www.postgresql.org/docs/16/indexes-multicolumn.html
+-- [S7] https://www.postgresql.org/docs/16/sql-createindex.html
+-- [S8] https://www.postgresql.org/docs/16/using-explain.html
+-- [S9] https://www.postgresql.org/docs/16/sql-explain.html
+-- [S10] https://www.postgresql.org/docs/16/ddl-partitioning.html
+-- [S11] https://www.postgresql.org/docs/16/sql-createview.html
+-- [S12] https://www.postgresql.org/docs/16/rules-materializedviews.html
+-- [S13] https://www.postgresql.org/docs/16/plpgsql-trigger.html
+-- [S14] https://www.postgresql.org/docs/16/sql-createfunction.html
+-- [S15] https://www.postgresql.org/docs/16/sql-createprocedure.html
+-- [S16] https://www.postgresql.org/docs/16/sql-call.html
+-- [S17] https://www.postgresql.org/docs/16/queries-with.html
+-- [S18] https://www.postgresql.org/docs/16/functions-subquery.html
+-- [S19] https://www.postgresql.org/docs/16/sql-delete.html
+-- [S20] https://www.postgresql.org/docs/16/sql-truncate.html
+-- [S21] https://dev.mysql.com/doc/refman/8.4/en/truncate-table.html
+-- [S22] https://learn.microsoft.com/en-us/sql/t-sql/statements/truncate-table-transact-sql

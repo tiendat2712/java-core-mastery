@@ -1,0 +1,1265 @@
+-- PHỎNG VẤN JAVA CORE (PHẦN 1/3) | 22/22 CÂU TRONG ẢNH (câu 1-22: nền tảng, OOP, Exception)
+-- Đây là tài liệu ôn tập. Mọi dòng đều là comment SQL; code Java chép ra file .java để chạy.
+-- Ví dụ viết cho Java 17 (LTS). Chỗ nào phụ thuộc phiên bản/JVM/OS sẽ được nói rõ.
+-- Nguồn [J1]..[J37] được ánh xạ ở cuối file. Đối chiếu ngày 19/10/2026.
+-- Mẹo chạy nhanh một file đơn: java Main.java (Java 11+ chạy thẳng source một file).
+--
+-- =============================================================================
+-- JAVA-01 | Phân biệt JDK, JRE, JVM
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   JVM là máy ảo thực thi bytecode (`.class`); JRE = JVM + thư viện lớp chuẩn để
+--   CHẠY chương trình; JDK = JRE + bộ công cụ phát triển (`javac`, `jar`, `javadoc`,
+--   `jdb`, `jlink`, `jshell`, `jcmd`...) để VIẾT, BUILD và CHẨN ĐOÁN ứng dụng. Tóm
+--   gọn: JDK chứa JRE, và JRE chứa JVM. [J30]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   - JVM (Java Virtual Machine): Bao gồm đặc tả kỹ thuật (JVMS) và các bản cài đặt
+--     cụ thể (HotSpot, OpenJ9...). Chịu trách nhiệm nạp class (ClassLoader), kiểm
+--     tra tính hợp lệ của bytecode (Bytecode Verifier), quản lý bộ nhớ & thu gom rác
+--     (GC), thông dịch (Interpreter) và biên dịch JIT (Just-In-Time) ra mã máy. [J3][J30]
+--   - JRE (Java Runtime Environment): Tập môi trường thời gian chạy gồm các module
+--     thư viện chuẩn (`java.base`, `java.sql`...), JVM và công cụ khởi chạy `java`.
+--   - JDK (Java Development Kit): Bao gồm toàn bộ JRE cộng thêm trình biên dịch
+--     `javac` (biến `.java` -> `.class`), `jar` đóng gói, `javadoc` sinh tài liệu,
+--     `jlink` tạo runtime image rút gọn... [J31]
+--
+-- Ví dụ lệnh thực tế:
+--   javac Hello.java        // cần JDK: biên dịch source tạo Hello.class (bytecode)
+--   java Hello              // cần JRE/JVM: thực thi bytecode
+--   java -version           // kiểm tra JVM và phiên bản đang dùng
+--   java --list-modules     // liệt kê các module có trong runtime hiện tại
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Từ Java 9 hệ thống được module hóa (JPMS); từ Java 11, Oracle không còn phát
+--     hành gói JRE cài rời cho người dùng cuối nữa, muốn tạo runtime nhỏ gọn chỉ
+--     chứa các module cần thiết thì dùng công cụ `jlink` [J31]. Tuy nhiên, nhiều nhà
+--     phân phối OpenJDK khác (Eclipse Temurin, Amazon Corretto...) vẫn cung cấp bản
+--     build JRE riêng tùy nhu cầu.
+--   - Tránh nói nhầm "JVM biên dịch code Java": `javac` (thuộc JDK) mới biên dịch
+--     source `.java` sang bytecode `.class`, còn JVM thực thi bytecode đó (trong đó
+--     trình biên dịch JIT bên trong JVM sẽ dịch các đoạn bytecode chạy nhiều sang mã
+--     máy lúc runtime để tối ưu tốc độ).
+--
+-- =============================================================================
+-- JAVA-02 | Tại sao Java write once run anywhere (WORA)?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Mã nguồn Java (`.java`) được `javac` biên dịch thành bytecode (`.class`) trung
+--   lập với phần cứng và hệ điều hành, chứ không biên dịch thẳng ra mã máy của một
+--   CPU cụ thể. Mỗi hệ điều hành/kiến trúc CPU có bản cài đặt JVM riêng biết đọc và
+--   thực thi chuẩn bytecode đó, nên cùng một file `.class`/`.jar` có thể chạy trên
+--   mọi nền tảng có JVM tương thích. [J30]
+--
+-- Giải thích chi tiết:
+--   - Luồng thực thi độc lập nền tảng:
+--     `Hello.java` --(javac)--> `Hello.class` (bytecode) --(JVM Windows/Linux/macOS)--> Mã máy.
+--   - Đặc tả ngôn ngữ (JLS) và máy ảo (JVMS) quy định chặt chẽ kích thước kiểu dữ
+--     liệu nguyên thủy (ví dụ `int` luôn là 32-bit có dấu, không đổi theo CPU 32-bit
+--     hay 64-bit), thứ tự đánh giá biểu thức và mô hình bộ nhớ, giúp hành vi chương
+--     trình nhất quán giữa các kiến trúc. [J1][J2]
+--
+-- Ví dụ code độc lập nền tảng (dùng API chuẩn thay vì hard-code theo OS):
+--   import java.nio.file.Path;
+--   public class Main {
+--       public static void main(String[] args) {
+--           Path p = Path.of("data", "a.txt");   // tự dùng \ hoặc / tùy OS
+--           System.out.println(p);
+--           System.out.println(System.getProperty("os.name"));
+--           System.out.println(System.lineSeparator().length()); // 1 (\n) hoặc 2 (\r\n)
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - WORA không có nghĩa là viết thế nào cũng chạy giống hệt nhau tuyệt đối: nếu
+--     dùng thư viện native qua JNI, hard-code đường dẫn kiểu `"C:\\temp\\..."`, phụ
+--     thuộc ký tự xuống dòng (`\n` vs `\r\n`), phụ thuộc charset mặc định của OS
+--     (trước Java 18 phụ thuộc môi trường; từ Java 18+ theo JEP 400 mới mặc định là
+--     UTF-8), hoặc dựa vào thứ tự lập lịch thread của OS thì sang máy khác vẫn lỗi
+--     (vì vậy mới có câu nói vui "Write once, test everywhere").
+--   - Nhớ phân biệt: Bytecode thì độc lập nền tảng (platform-independent), nhưng bản
+--     thân phần mềm JVM thì phụ thuộc nền tảng (platform-specific - cài JVM cho
+--     Windows khác JVM cho Linux).
+--
+-- =============================================================================
+-- JAVA-03 | Có bao nhiêu loại KDL (kiểu dữ liệu) trong Java?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Java chia kiểu dữ liệu thành 2 nhóm lớn: kiểu nguyên thủy (primitive types) và
+--   kiểu tham chiếu (reference types). Có đúng 8 kiểu nguyên thủy; còn nhóm kiểu
+--   tham chiếu bao gồm class, interface, array (cùng type variable trong generics và
+--   kiểu `null` đặc biệt). [J1][J2]
+--
+-- Giải thích chi tiết:
+--   - 8 kiểu dữ liệu nguyên thủy (Primitive types): [J1][J2]
+--     * Số nguyên có dấu: `byte` (8-bit), `short` (16-bit), `int` (32-bit), `long` (64-bit).
+--     * Số thực dấu phẩy động (IEEE 754): `float` (32-bit), `double` (64-bit).
+--     * Ký tự: `char` (16-bit không dấu, đại diện một code unit UTF-16 từ `\u0000` đến `\uffff`).
+--     * Logic: `boolean` (`true`/`false`; JLS không quy định cứng số bit lưu trữ).
+--   - Kiểu tham chiếu (Reference types):
+--     * Bao gồm `String`, các lớp Wrapper (`Integer`, `Long`, `Double`...), `List<String>`,
+--       mảng (`int[]`, `String[]`), `enum`, `record`, `interface` và mọi class tự định nghĩa.
+--
+-- Ví dụ:
+--   int age = 30;                 // primitive
+--   long big = 10_000_000_000L;   // hậu tố L cho literal kiểu long
+--   double d = 3.14;  float f = 3.14f;
+--   char c = 'A';  boolean ok = true;
+--   String s = "hi";              // reference type
+--   int[] arr = {1, 2, 3};        // mảng luôn là reference type (kể cả mảng primitive)
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - `String` KHÔNG phải kiểu nguyên thủy (dù được hỗ trợ viết literal `"..."`), mà
+--     là một reference type (`java.lang.String`). Mảng `int[]` cũng là đối tượng
+--     tham chiếu.
+--   - Mỗi kiểu nguyên thủy đều có một lớp Wrapper tương ứng (`Byte`, `Short`,
+--     `Integer`, `Long`, `Float`, `Double`, `Character`, `Boolean`).
+--   - Từ khóa `var` (Java 10+) KHÔNG phải là kiểu dữ liệu mới hay kiểu động như
+--     JavaScript, mà chỉ là cú pháp để compiler tự suy luận kiểu tĩnh cho biến cục bộ.
+--
+-- =============================================================================
+-- JAVA-04 | Cách thức quản lý, lưu trữ, khởi tạo của KDL nguyên thủy và đối tượng - Phân biệt
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Biến nguyên thủy lưu TRỰC TIẾP giá trị dữ liệu; còn biến tham chiếu lưu địa chỉ/
+--   con trỏ trỏ tới đối tượng thực sự nằm trên Heap. Đối tượng được tạo qua `new`
+--   (hoặc literal/autoboxing), có phương thức, có thể mang giá trị `null` và do
+--   Garbage Collector (GC) thu hồi; trong khi kiểu nguyên thủy không cần `new`,
+--   không có method, không thể `null` và nhẹ hơn về bộ nhớ. [J1][J3]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   - Lưu trữ trong bộ nhớ (theo mô hình vùng nhớ logic của JVMS): [J3]
+--     * Biến cục bộ (local variable - bao gồm cả biến primitive lẫn biến giữ tham
+--       chiếu) nằm trong Stack Frame của từng thread; khi hàm kết thúc thì frame bị
+--       giải phóng ngay.
+--     * Bản thân đối tượng (Object instance - bao gồm cả các field primitive khai
+--       báo bên trong class đó) nằm trên vùng nhớ Heap dùng chung giữa các thread và
+--       được GC quản lý vòng đời.
+--     * Lưu ý nâng cao: Cách bố trí vật lý cụ thể do JVM quyết định; trình biên dịch
+--       JIT có thể thực hiện Escape Analysis để phân rã (scalar replacement) những
+--       object không thoát ra khỏi hàm thay vì cấp phát trên Heap.
+--   - Khởi tạo và giá trị mặc định:
+--     * Field của class/instance được gán giá trị mặc định nếu không khởi tạo tường
+--       minh: `int` = `0`, `boolean` = `false`, `double` = `0.0`, `char` = `'\u0000'`,
+--       còn mọi biến reference = `null`.
+--     * Biến cục bộ (trong hàm) KHÔNG có giá trị mặc định; đọc biến cục bộ trước khi
+--       gán giá trị sẽ bị lỗi biên dịch.
+--   - Cơ chế truyền tham số và so sánh:
+--     * Java LUÔN truyền tham số theo giá trị (pass-by-value): với primitive là sao
+--       chép giá trị; với object là sao chép giá trị của con trỏ tham chiếu (nên bên
+--       trong hàm có thể sửa trạng thái của object thông qua tham chiếu đó, nhưng nếu
+--       gán tham số sang object mới thì biến gốc ở nơi gọi không đổi).
+--     * So sánh primitive dùng `==`; so sánh giá trị logic của đối tượng dùng `.equals()`
+--       (vì `==` trên đối tượng chỉ so sánh xem 2 biến có trỏ cùng địa chỉ ô nhớ không).
+--
+-- Ví dụ minh họa:
+--   int a = 10; int b = a; b++;                    // a vẫn là 10 (sao chép giá trị độc lập)
+--   StringBuilder s1 = new StringBuilder("x");
+--   StringBuilder s2 = s1; s2.append("y");         // s1 cũng thành "xy" (cùng trỏ 1 object)
+--   Integer x = 127, y = 127;  System.out.println(x == y); // true (nhờ Integer cache)
+--   Integer m = 128, n = 128;  System.out.println(m == n); // thường là false (2 object khác nhau)
+--   System.out.println(m.equals(n));                       // true (so sánh giá trị bên trong)
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy Autoboxing & Integer Cache: `Integer.valueOf(int)` bắt buộc cache các giá
+--     trị trong đoạn `-128` đến `127` theo đặc tả JLS §5.1.7 [J35], nên `==` trong
+--     khoảng này trả về `true`, nhưng ngoài khoảng này sẽ tạo object mới khiến `==`
+--     trả về `false` -> luôn dùng `.equals()` khi so sánh giá trị Wrapper.
+--   - Bẫy Unboxing `null`: Khi gán hoặc tính toán khiến một biến Wrapper đang `null`
+--     tự động unbox sang primitive, JVM sẽ ném `NullPointerException` ngay lập tức:
+--       Integer i = null;
+--       int j = i; // NPE lúc chạy (tương đương i.intValue())
+--   - Khi nào dùng Wrapper vs Primitive: Dùng Wrapper khi làm việc với Generics/
+--     Collections (`List<Integer>`), hoặc khi cần biểu diễn trạng thái "chưa có giá
+--     trị" (`null` trong DTO/Entity DB); dùng primitive khi tính toán hiệu năng cao,
+--     tránh chi phí boxing/unboxing và tốn bộ nhớ header của object.
+--
+-- =============================================================================
+-- JAVA-05 | Enum là gì, khi nào sử dụng Enum?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Enum (kiểu liệt kê) là một kiểu lớp đặc biệt đại diện cho một tập hợp hằng số cố
+--   định, biết trước lúc biên dịch, an toàn kiểu (type-safe) và ngầm kế thừa từ
+--   `java.lang.Enum`. Ta sử dụng Enum khi một biến chỉ được phép nhận một trong số
+--   hữu hạn các giá trị xác định như: trạng thái đơn hàng, ngày trong tuần, vai trò
+--   người dùng, mã loại giao dịch... [J4][J5]
+--
+-- Giải thích chi tiết:
+--   - Bản chất của Enum trong Java mạnh hơn nhiều ngôn ngữ khác: mỗi hằng enum là
+--     một instance `public static final` duy nhất của lớp enum đó.
+--   - Enum có thể có thuộc tính (field), constructor (luôn ngầm là `private`), phương
+--     thức thường, phương thức `abstract` để từng hằng tự cài đặt hành vi riêng
+--     (constant-specific method body), và có thể `implements` các interface.
+--   - Enum KHÔNG thể `extends` class khác (vì đã ngầm kế thừa `java.lang.Enum`) và
+--     cũng không thể được class khác kế thừa. [J4]
+--   - Khi nào nên dùng Enum:
+--     * Thay thế các hằng số rời rạc kiểu `int`/`String` ("magic numbers/strings")
+--       vốn dễ truyền sai giá trị và không được compiler kiểm tra.
+--     * Dùng trong cấu trúc điều hướng `switch` hoặc gắn kèm hành vi (Strategy).
+--     * Cài đặt Singleton an toàn tuyệt đối trước Reflection và Serialization.
+--     * Kết hợp với `EnumSet` (dựa trên bit vector) và `EnumMap` (dựa trên mảng theo
+--       `ordinal`) cho tốc độ và bộ nhớ tối ưu hơn `HashSet`/`HashMap`.
+--
+-- Ví dụ:
+--   import java.util.*;
+--   public class Main {
+--       enum Status {
+--           NEW("Mới"), PAID("Đã thanh toán"), SHIPPED("Đã giao");
+--           private final String label;
+--           Status(String label) { this.label = label; }
+--           public String label() { return label; }
+--       }
+--       enum Op {
+--           ADD { int apply(int a, int b) { return a + b; } },
+--           MUL { int apply(int a, int b) { return a * b; } };
+--           abstract int apply(int a, int b);
+--       }
+--       public static void main(String[] args) {
+--           Status s = Status.valueOf("PAID");          // sai tên -> IllegalArgumentException
+--           System.out.println(s + " " + s.label() + " " + s.ordinal());
+--           for (Status v : Status.values()) System.out.println(v.name());
+--           System.out.println(Op.MUL.apply(3, 4));
+--           EnumMap<Status, Integer> count = new EnumMap<>(Status.class);
+--           count.merge(Status.NEW, 1, Integer::sum);
+--           System.out.println(count + " " + EnumSet.of(Status.NEW, Status.PAID));
+--           switch (s) { case NEW -> System.out.println("new"); default -> System.out.println("other"); }
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - So sánh hai giá trị enum nên dùng toán tử `==` vì mỗi hằng là một instance duy
+--     nhất trong JVM: vừa nhanh hơn, vừa kiểm tra tương thích kiểu lúc compile, lại
+--     không bao giờ ném `NullPointerException` dù một vế là `null`.
+--   - Bẫy `ordinal()`: Không nên lưu thứ tự `ordinal()` (0, 1, 2...) xuống Database
+--     (ví dụ mặc định `EnumType.ORDINAL` trong JPA) vì chỉ cần ai đó chèn thêm hoặc
+--     đổi thứ tự khai báo hằng trong code là toàn bộ dữ liệu cũ bị lệch ý nghĩa. Hãy
+--     lưu `name()` hoặc một trường `code` riêng.
+--   - `Enum.valueOf(String)` phân biệt hoa/thường và ném `IllegalArgumentException`
+--     nếu chuỗi không khớp (hoặc `NullPointerException` nếu truyền `null`).
+--   - Không dùng Enum cho danh mục thay đổi động lúc runtime (như danh sách tỉnh
+--     thành, danh mục sản phẩm quản trị viên thêm/sửa trên giao diện).
+--
+-- =============================================================================
+-- JAVA-06 | Mục đích của khai báo final cho biến trong Java
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Khai báo `final` cho một biến có nghĩa là biến đó chỉ được phép gán giá trị ĐÚNG
+--   MỘT LẦN; sau khi đã gán thì không thể gán lại sang giá trị hay tham chiếu khác.
+--   Mục đích chính: định nghĩa hằng số, cố định tham chiếu tránh bị gán nhầm, đảm
+--   bảo an toàn đa luồng (publication safety) cho các thuộc tính của đối tượng, và
+--   cho phép truy cập biến cục bộ từ bên trong Lambda / Anonymous class. [J6][J7]
+--
+-- Giải thích chi tiết:
+--   - Với biến nguyên thủy (`final int MAX = 100`): Giá trị không bao giờ thay đổi.
+--   - Với biến tham chiếu (`final List<String> names = ...`): Con trỏ tham chiếu bị
+--     khóa chặt vào đối tượng ban đầu, không thể trỏ sang đối tượng khác.
+--   - Blank final variable: Biến `final` chưa gán giá trị ngay lúc khai báo. Nếu là
+--     instance field thì bắt buộc phải được gán trong mọi constructor (hoặc instance
+--     initializer block); nếu là biến cục bộ thì phải được gán chắc chắn trước khi đọc.
+--   - Ý nghĩa trong đa luồng (Java Memory Model - JLS §17.5): Các `final` field của
+--     một object được JVM đảm bảo hiển thị đúng và đầy đủ (safe publication) cho mọi
+--     thread khác ngay khi constructor kết thúc mà không cần đồng bộ hóa thêm (miễn
+--     là không để tham chiếu `this` rò rỉ ra ngoài trong lúc constructor đang chạy).
+--
+-- Ví dụ:
+--   final int MAX = 100;                       // hằng cục bộ
+--   // MAX = 200;                              // lỗi biên dịch: cannot assign a value to final variable
+--   public static final double PI2 = 6.28;     // hằng của lớp (quy ước đặt tên IN_HOA)
+--   class User {
+--       private final String id;               // blank final field: gán trong constructor
+--       User(String id) { this.id = id; }
+--   }
+--   final List<String> names = new ArrayList<>();
+--   names.add("An");                           // HỢP LỆ: trạng thái bên trong đối tượng vẫn sửa được!
+--   // names = new ArrayList<>();              // LỖI BIÊN DỊCH: không thể đổi tham chiếu
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy kinh điển: Từ khóa `final` trên biến tham chiếu KHÔNG biến đối tượng đó
+--     thành bất biến (immutable), nó chỉ cấm biến đó trỏ sang đối tượng khác. Muốn
+--     bất biến thực sự phải dùng kiểu dữ liệu bất biến (`String`, `record`,
+--     `List.of(...)`, hoặc tự thiết kế immutable class).
+--   - Phân biệt `final` và "effectively final" (Java 8+): Một biến cục bộ dù không
+--     ghi từ khóa `final` nhưng nếu thực tế không bao giờ bị gán lại sau lần khởi
+--     tạo thì được coi là effectively final và dùng được trong Lambda/Inner class.
+--   - Bẫy Compile-time constant: Biến `static final` kiểu primitive hoặc `String`
+--     được gán bằng một biểu thức hằng lúc compile sẽ được compiler inline (chép
+--     thẳng giá trị) vào các class gọi nó; nếu sửa giá trị hằng này mà không biên
+--     dịch lại các class phụ thuộc thì chúng vẫn chạy với giá trị cũ.
+--
+-- =============================================================================
+-- JAVA-07 | Những vị trí có thể đặt từ khóa final
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Từ khóa `final` có thể đặt ở 3 nhóm vị trí chính: (1) Biến (gồm biến cục bộ,
+--   instance/static field, tham số hàm, biến vòng lặp `for`, tham số `catch`, biến
+--   `try-with-resources`), (2) Phương thức (method), và (3) Lớp (class). Lưu ý:
+--   KHÔNG thể đặt `final` cho constructor hay interface. [J6][J7]
+--
+-- Giải thích chi tiết từng vị trí và ý nghĩa:
+--   1. Biến / Field / Tham số: Chỉ được gán giá trị một lần, không thể gán lại.
+--      - Bao gồm cả tham số method (`void run(final int x)`), biến vòng lặp
+--        (`for (final String s : list)`), tham số `catch (final IOException e)` và
+--        tham số Lambda (`(final var x) -> x + 1`).
+--   2. Phương thức (`final void log() {}`): Ngăn không cho các lớp con ghi đè
+--      (override) phương thức đó để bảo toàn hành vi cốt lõi của lớp cha.
+--   3. Lớp (`final class Util {}`): Ngăn không cho bất kỳ lớp nào kế thừa (`extends`)
+--      lớp đó (ví dụ tiêu biểu trong JDK: `String`, `Integer`, `LocalDate`, mọi
+--      `record` đều ngầm là `final`).
+--   4. Kết hợp trong Java 17 Sealed Classes (JEP 409): Một lớp con được liệt kê
+--      trong mệnh đề `permits` của `sealed` class/interface bắt buộc phải khai báo
+--      rõ một trong 3 từ khóa: `final` (đóng nhánh kế thừa), `sealed` hoặc `non-sealed`. [J32]
+--
+-- Ví dụ:
+--   public final class SecurityToken {                 // 1. final class: cấm kế thừa
+--       private final String value;                    // 2. final field: gán 1 lần
+--       public SecurityToken(final String value) {     // 3. final parameter
+--           this.value = value;
+--       }
+--   }
+--   class BaseService {
+--       public final void execute() {                  // 4. final method: cấm override
+--           for (final int step : new int[]{1, 2}) {   // 5. final biến vòng lặp
+--               System.out.println(step);
+--           }
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Các tổ hợp KHÔNG hợp lệ (báo lỗi biên dịch):
+--     * `final` + constructor (constructor không được kế thừa nên `final` vô nghĩa).
+--     * `final` + `abstract` trên cùng một class hoặc method (mâu thuẫn trực tiếp:
+--       `abstract` bắt buộc phải kế thừa/override, còn `final` lại cấm).
+--     * `final interface` (interface sinh ra để được implements).
+--   - Các vị trí đã ngầm (implicitly) hoặc dư thừa:
+--     * Phương thức `private` và `static` vốn không thể override theo đa hình nên
+--       thêm `final` là dư thừa (không cấm nhưng không có tác dụng thêm).
+--     * Mọi field trong `interface` đều ngầm là `public static final`.
+--     * Biến ngoại lệ trong multi-catch `catch (IOException | SQLException e)` và
+--       biến khai báo mới trong `try (var in = ...)` luôn ngầm là `final`.
+--
+-- =============================================================================
+-- JAVA-08 | Mục đích, ý nghĩa của từ khóa static
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Từ khóa `static` gắn một thành viên với BẢN THÂN LỚP (class-level) thay vì gắn
+--   với từng đối tượng cụ thể (instance-level). Thành viên `static` được dùng chung
+--   cho mọi instance của lớp và có thể truy cập trực tiếp qua tên lớp mà không cần
+--   khởi tạo đối tượng bằng `new`. Nó thường dùng cho hằng số, hàm tiện ích (utility),
+--   bộ đếm/cấu hình dùng chung, static factory method, khối khởi tạo tĩnh và
+--   static nested class. [J8]
+--
+-- Giải thích chi tiết:
+--   - Các thành phần có thể khai báo `static`:
+--     1. Static field (biến lớp): Chỉ có duy nhất một bản sao thuộc về lớp đó.
+--     2. Static method (phương thức lớp): Gọi thẳng qua `ClassName.method()`.
+--     3. Static initializer block (`static { ... }`): Chạy đúng 1 lần khi lớp được
+--        khởi tạo (class initialization). [J36]
+--     4. Static nested class: Lớp lồng bên trong lớp khác nhưng không cần instance
+--        của lớp bao ngoài (outer class) để khởi tạo.
+--     5. `import static`: Cho phép sử dụng trực tiếp các thành viên tĩnh (như
+--        `Math.PI`, `Assertions.assertEquals`) mà không cần viết kèm tên lớp.
+--   - Quy tắc cốt lõi:
+--     * Phương thức `static` KHÔNG có con trỏ `this` hay `super`, nên không thể truy
+--       cập trực tiếp biến instance hay phương thức instance (muốn gọi phải thông
+--       qua một tham chiếu object cụ thể).
+--     * Phương thức `static` không tham gia đa hình runtime (không override được);
+--       nếu lớp con khai báo hàm `static` cùng chữ ký thì đó là che khuất (method
+--       hiding), lời gọi được quyết định lúc compile theo kiểu khai báo của biến.
+--     * Khởi tạo lớp (Class initialization) chỉ diễn ra khi lớp được sử dụng chủ
+--       động lần đầu (tạo instance, gọi static method, đọc/gán static field không
+--       phải hằng biên dịch...). [J36]
+--
+-- Ví dụ:
+--   public class Counter {
+--       private static int total = 0;           // dùng chung cho mọi instance
+--       private final int id;
+--       static { System.out.println("class loaded"); }   // chạy 1 lần khi khởi tạo class [J36]
+--       Counter() { id = ++total; }
+--       static int getTotal() { return total; }
+--       public static void main(String[] a) {
+--           new Counter(); new Counter();
+--           System.out.println(Counter.getTotal()); // 2
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Static nested class vs Inner class (non-static): Static nested class KHÔNG giữ
+--     tham chiếu ngầm tới đối tượng outer nên tránh được nguy cơ rò rỉ bộ nhớ
+--     (memory leak) -> luôn ưu tiên dùng `static class` cho lớp lồng nhau nếu không
+--     cần truy cập thành viên instance của outer. (Lưu ý thêm: từ Java 16 theo JEP 395,
+--     inner class đã được phép khai báo thành viên `static` [J34]).
+--   - Lạm dụng biến `static` có thể thay đổi (mutable static state) sẽ tạo ra trạng
+--     thái toàn cục gây lỗi race condition khi chạy đa luồng, khó viết unit test độc
+--     lập, và các collection `static` giữ tham chiếu lâu dài rất dễ gây Memory Leak.
+--
+-- =============================================================================
+-- JAVA-09 | Có thể khai báo private constructor được không? Vì sao?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Hoàn toàn ĐƯỢC. Khi khai báo `private` constructor, chỉ có code nằm BÊN TRONG
+--   chính class đó (bao gồm cả các nested class của nó) mới gọi được toán tử `new`.
+--   Kỹ thuật này được dùng phổ biến để: (1) Cài đặt mẫu thiết kế Singleton, (2) Chặn
+--   việc tạo đối tượng thừa ở các lớp tiện ích chỉ chứa hàm `static` (Utility class),
+--   (3) Bắt buộc người dùng khởi tạo qua Static Factory Method hoặc Builder để kiểm
+--   soát/tái sử dụng instance, và (4) Ngăn lớp bên ngoài kế thừa. Ngoài ra, mọi
+--   constructor của `enum` đều luôn ngầm là `private`. [J9][J10]
+--
+-- Giải thích chi tiết:
+--   - Nếu bạn không viết bất kỳ constructor nào, trình biên dịch sẽ tự sinh một
+--     default no-arg constructor có cùng mức truy cập với class. Do đó, với các lớp
+--     tiện ích như `java.lang.Math` hay `java.util.Collections`, người ta phải chủ
+--     động viết `private` constructor để vô hiệu hóa constructor mặc định đó.
+--   - Kết hợp `private` constructor với Static Factory Method (như `LocalDate.of(...)`,
+--     `Optional.of(...)`) giúp hàm tạo có tên gợi nhớ rõ ràng, có thể kiểm tra điều
+--     kiện đầu vào, trả về đối tượng từ bộ nhớ đệm (caching) hoặc trả về một lớp con
+--     phù hợp.
+--
+-- Ví dụ 3 trường hợp sử dụng thực tế:
+--   public final class MathUtil {
+--       private MathUtil() { throw new AssertionError("no instances"); } // Utility class
+--       public static int square(int x) { return x * x; }
+--   }
+--   public class Config {
+--       private static final Config INSTANCE = new Config();             // Singleton
+--       private Config() {}
+--       public static Config getInstance() { return INSTANCE; }
+--   }
+--   public class Money {
+--       private final long cents;
+--       private Money(long cents) { this.cents = cents; }
+--       public static Money ofCents(long c) {                            // Static factory
+--           if (c < 0) throw new IllegalArgumentException();
+--           return new Money(c);
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Một class chỉ có `private` constructor thì các class bên ngoài KHÔNG thể
+--     `extends` được (vì constructor lớp con luôn phải gọi `super(...)`), nhưng các
+--     nested class nằm bên trong chính nó thì vẫn kế thừa được!
+--   - Reflection với `constructor.setAccessible(true)` vẫn có thể vượt qua `private`
+--     constructor để tạo instance mới (làm hỏng Singleton hoặc Utility class). Cách
+--     phòng vệ: ném `AssertionError` / `IllegalStateException` ngay bên trong
+--     `private` constructor, hoặc dùng `enum` cho Singleton (JVM chặn tuyệt đối việc
+--     tạo instance enum bằng Reflection).
+--
+-- =============================================================================
+-- JAVA-10 | Phân biệt class và object
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Class` là bản thiết kế hoặc khuôn mẫu (blueprint/template) định nghĩa các thuộc
+--   tính (fields) và hành vi (methods) chung; còn `Object` (instance) là một thực
+--   thể cụ thể được khởi tạo từ khuôn mẫu đó lúc chương trình chạy (thường bằng từ
+--   khóa `new`), chiếm vùng nhớ trên Heap và mang trạng thái dữ liệu riêng biệt. Từ
+--   một class có thể tạo ra vô số object độc lập. [J15]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   - Bản chất: Class là khái niệm logic / định nghĩa kiểu dữ liệu trong mã nguồn
+--     (tồn tại ở compile-time và được nạp vào JVM một lần dưới dạng metadata kèm đối
+--     tượng đại diện `java.lang.Class<?>`); còn Object là thực thể động sinh ra và
+--     mất đi lúc runtime, được Garbage Collector thu hồi khi không còn tham chiếu.
+--   - Bộ nhớ & Trạng thái: Định nghĩa class không cấp phát bộ nhớ cho các biến
+--     instance; chỉ khi tạo object bằng `new`, vùng nhớ Heap mới được cấp cho các
+--     field instance của riêng object đó. Các thành viên `static` thuộc về class,
+--     còn thành viên không `static` thuộc về từng object.
+--
+-- Ví dụ:
+--   class Car {                           // Class: bản thiết kế
+--       String color; int speed;
+--       void accelerate() { speed += 10; }
+--   }
+--   Car a = new Car(); a.color = "red";   // Object 1 trên Heap
+--   Car b = new Car(); b.color = "blue";  // Object 2 trên Heap, trạng thái độc lập với a
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Phân biệt biến tham chiếu và object: Lệnh `Car c = a;` KHÔNG tạo ra object mới
+--     mà chỉ tạo thêm một biến tham chiếu `c` cùng trỏ vào object đang có của `a`.
+--   - Với `record` hay `enum`, bản thân khai báo `record`/`enum` vẫn là Class (kiểu),
+--     còn các thể hiện cụ thể lúc chạy là Object.
+--
+-- =============================================================================
+-- JAVA-11 | Tại sao phải khai báo private cho các thuộc tính của class, truy cập thông qua getter, setter
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Đây là cách hiện thực hóa tính Đóng gói (Encapsulation) trong OOP: che giấu cấu
+--   trúc dữ liệu nội bộ bên trong class và chỉ cho phép bên ngoài tương tác thông
+--   qua các phương thức công khai có kiểm soát. Lợi ích cốt lõi: kiểm tra tính hợp
+--   lệ của dữ liệu (validation) để bảo vệ các bất biến nghiệp vụ (class invariants),
+--   cho phép thay đổi cách lưu trữ bên trong mà không làm hỏng code nơi gọi, dễ dàng
+--   bổ sung logging/caching/đồng bộ đa luồng, và chủ động kiểm soát quyền chỉ đọc
+--   hoặc chỉ ghi. [J10][J15]
+--
+-- Giải thích chi tiết:
+--   - Nếu để thuộc tính là `public`, bất kỳ đoạn code nào từ bên ngoài cũng có thể
+--     gán giá trị sai lệch (ví dụ gán số dư tài khoản âm, tuổi âm) khiến đối tượng
+--     rơi vào trạng thái không hợp lệ mà class không thể ngăn chặn.
+--   - Khi đóng gói bằng `private` field:
+--     * Ta có thể chỉ cung cấp getter mà bỏ setter để tạo thuộc tính chỉ đọc.
+--     * Ta có thể tính toán giá trị trả về động (ví dụ lưu `birthDate` nhưng vẫn giữ
+--       hàm `getAge()` mà không cần lưu field `age`).
+--     * Dễ dàng đặt breakpoint để debug xem ai đã đọc hoặc thay đổi thuộc tính.
+--
+-- Ví dụ:
+--   public class Account {
+--       private double balance;
+--       public double getBalance() { return balance; }
+--       public void deposit(double amt) {
+--           if (amt <= 0) throw new IllegalArgumentException("amt must be > 0");
+--           balance += amt;
+--       }
+--       // Không mở setBalance(double) tùy tiện để bảo vệ quy tắc nghiệp vụ của số dư
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy "Anemic Domain Model": Việc để field `private` nhưng lại dùng IDE tự sinh
+--     `get`/`set` trống rỗng cho toàn bộ mọi field thực chất chưa đạt được đóng gói
+--     tốt. Thiết kế OOP chuẩn khuyến khích cung cấp các phương thức mang ý nghĩa
+--     nghiệp vụ (như `deposit()`, `withdraw()`, `activate()`) thay vì phơi bày setter
+--     thô cho mọi trường.
+--   - Bẫy lộ tham chiếu khả biến (Mutable reference leak): Nếu một `private` field
+--     là `List`, mảng hoặc `Date` mà hàm getter lại `return this.items;` trực tiếp,
+--     bên ngoài gọi `getItems().clear()` vẫn sửa nát dữ liệu bên trong class! Phải
+--     trả về bản sao bảo vệ (defensive copy) hoặc view không sửa được như
+--     `List.copyOf(items)` / `Collections.unmodifiableList(items)`.
+--   - Với các lớp dữ liệu bất biến thuần túy (DTO/Value Object), từ Java 16+ nên
+--     dùng `record` (tự tạo `private final` fields và các hàm đọc accessor).
+--
+-- =============================================================================
+-- JAVA-12 | Có thể truy cập các thuộc tính, phương thức private từ phạm vi bên ngoài class được không. Ví dụ?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Bằng cú pháp gọi thông thường từ một class độc lập bên ngoài thì KHÔNG THỂ (trình
+--   biên dịch sẽ báo lỗi). Tuy nhiên, có 3 trường hợp đặc biệt cần nêu rõ khi phỏng
+--   vấn: (1) Giữa Outer class và Nested/Inner class có thể truy cập trực tiếp thành
+--   viên `private` của nhau; (2) Một method bên trong class `A` có thể truy cập
+--   trực tiếp thành viên `private` của một đối tượng `A` khác truyền vào; và (3) Từ
+--   class bên ngoài có thể dùng cơ chế Reflection (`setAccessible(true)`) lúc runtime
+--   nhưng chịu sự kiểm soát bao đóng mạnh (strong encapsulation) của hệ thống Module
+--   từ Java 9 và đặc biệt nghiêm ngặt từ Java 17 (JEP 403). [J10][J11][J12][J13]
+--
+-- Giải thích chi tiết:
+--   - Phạm vi của `private` theo đặc tả JLS §6.6 là theo ĐƠN VỊ LỚP BAO NGOÀI CÙNG
+--     (top-level class) chứ không phải theo từng instance riêng lẻ. Vì vậy:
+--     * Hai đối tượng cùng kiểu `Outer` nhìn thấy các trường `private` của nhau.
+--     * Mọi nested/inner class cùng nằm trong một top-level class (từ Java 11 gọi là
+--       cùng một "nest" - JEP 181 Nest-Based Access Control) đều truy cập trực tiếp
+--       `private` của nhau ở cấp độ bytecode mà không cần sinh hàm cầu nối (synthetic
+--       bridge methods). [J10][J11]
+--   - Với Reflection từ bên ngoài (`Field.setAccessible(true)` / `Method.setAccessible(true)`):
+--     * Nếu target class là class do bạn viết nằm trên classpath (unnamed module)
+--       hoặc trong một module đã khai báo `opens` package đó, `setAccessible(true)`
+--       sẽ mở khóa để đọc/ghi field và gọi method `private`.
+--     * Nhưng từ Java 16/17 (JEP 403), cơ chế `--illegal-access` đã bị gỡ bỏ: các
+--       package nội bộ và thành viên `private` của thư viện chuẩn JDK (như trong
+--       module `java.base`) bị đóng kín mặc định; gọi `setAccessible(true)` vào
+--       `String.class` sẽ ném `java.lang.reflect.InaccessibleObjectException` trừ
+--       khi truyền cờ JVM `--add-opens`. [J12][J13][J14]
+--     * Ghi chú thêm: `SecurityManager` từng dùng để chặn reflection ở các phiên bản
+--       cũ đã bị đánh dấu `@Deprecated(forRemoval=true)` ở Java 17 (JEP 411). [J33]
+--
+-- Ví dụ 1 - Truy cập hợp lệ bằng ngôn ngữ (cùng class và nested/inner class):
+--   public class Outer {
+--       private int secret = 42;
+--       class Inner { int peek() { return secret; } }                  // OK: Inner đọc private của Outer
+--       static class Nested { int peek(Outer o) { return o.secret; } } // OK: Nested đọc private của Outer
+--       boolean same(Outer other) { return secret == other.secret; }   // OK: đọc private của instance khác cùng class
+--   }
+--
+-- Ví dụ 2 - Truy cập từ bên ngoài qua Reflection (trên class tự viết ở classpath):
+--   import java.lang.reflect.*;
+--   public class Main {
+--       static class Box { private String v = "hidden"; private String hi() { return "hi"; } }
+--       public static void main(String[] a) throws Exception {
+--           Box b = new Box();
+--           Field f = Box.class.getDeclaredField("v");
+--           f.setAccessible(true);
+--           System.out.println(f.get(b));                 // hidden
+--           f.set(b, "changed");
+--           Method m = Box.class.getDeclaredMethod("hi");
+--           m.setAccessible(true);
+--           System.out.println(m.invoke(b));              // hi
+--       }
+--   }
+--
+-- Ví dụ 3 - Giới hạn của Reflection trên Java 17 với hệ thống Module (JPMS):
+--   Field v = String.class.getDeclaredField("value");
+--   v.setAccessible(true);   // Ném InaccessibleObjectException trên Java 17!
+--   // Vì module java.base không "opens java.lang" cho module của bạn [J13][J14]
+--   // Nếu thực sự cần cho công cụ/framework: chạy kèm cờ JVM
+--   // java --add-opens java.base/java.lang=ALL-UNNAMED ...
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Chỉ dùng Reflection cho mục đích viết Framework/Library (như Spring DI,
+--     Hibernate ORM, Jackson, JUnit) hoặc kiểm thử đặc biệt. Trong code nghiệp vụ,
+--     dùng Reflection để chọc vào `private` sẽ phá vỡ tính đóng gói, mất kiểm tra
+--     kiểu lúc compile, giảm hiệu năng và dễ gãy vỡ ngay khi đổi tên biến nội bộ.
+--   - Phân biệt `exports` và `opens` trong `module-info.java`: `exports` chỉ cho
+--     module khác truy cập các kiểu/thành viên `public`, còn `opens` mới cho phép
+--     dùng Reflection (`setAccessible(true)`) hoặc `MethodHandles.privateLookupIn`
+--     truy cập sâu vào các thành viên `private` lúc runtime. [J14]
+--
+-- =============================================================================
+-- JAVA-13 | Phân biệt constructor và setter
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Constructor là hàm khởi tạo đặc biệt chỉ chạy ĐÚNG MỘT LẦN tại thời điểm tạo
+--   đối tượng bằng `new` nhằm thiết lập trạng thái hợp lệ ban đầu cho object; nó
+--   trùng tên với class và không có kiểu trả về. Ngược lại, Setter là một phương
+--   thức bình thường có kiểu trả về (thường là `void`), có thể được gọi NHIỀU LẦN
+--   sau khi đối tượng đã tồn tại để cập nhật lại giá trị của một thuộc tính. [J9]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   - Tên và cú pháp: Constructor bắt buộc trùng tên class và không có return type
+--     (kể cả `void`); Setter đặt tên theo quy ước `setFieldName(...)` và có return type.
+--   - Thời điểm và cách gọi: Constructor được gọi tự động qua toán tử `new` (hoặc
+--     `this(...)`/`super(...)`) đúng 1 lần khi tạo instance; Setter được gọi bất kỳ
+--     lúc nào trên biến tham chiếu của đối tượng đã khởi tạo.
+--   - Tương tác với `final` field: Constructor CÓ THỂ gán giá trị cho thuộc tính
+--     `final` (blank final field); còn Setter KHÔNG THỂ gán lại thuộc tính `final`.
+--   - Kế thừa: Constructor không được kế thừa sang lớp con (lớp con chỉ gọi qua
+--     `super(...)`); Setter là method thường nên được kế thừa và có thể `@Override`.
+--
+-- Ví dụ:
+--   class User {
+--       private final String id;       // chỉ constructor mới gán được
+--       private String name;
+--       User(String id, String name) {
+--           this.id = Objects.requireNonNull(id);
+--           setName(name);             // tái dùng logic validate
+--       }
+--       void setName(String name) {
+--           if (name == null || name.isBlank()) throw new IllegalArgumentException();
+--           this.name = name;
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy đối tượng chưa hoàn chỉnh (Partially initialized object): Nếu lạm dụng
+--     constructor rỗng `new User()` rồi chờ gọi hàng loạt `setA()`, `setB()`, đối
+--     tượng rất dễ bị sử dụng khi chưa gán đủ các trường bắt buộc và không thể thiết
+--     kế bất biến (immutable). Quy tắc tốt: truyền mọi thuộc tính bắt buộc vào
+--     Constructor (hoặc dùng Builder nếu có nhiều tham số), chỉ mở Setter cho thuộc
+--     tính thực sự được phép thay đổi về sau.
+--   - Bẫy gọi hàm overridable trong Constructor: Nếu bên trong constructor của lớp
+--     cha gọi một method (như `setName()`) mà lớp con lại `@Override` method đó,
+--     code của lớp con sẽ chạy trước cả khi constructor của lớp con kịp khởi tạo các
+--     field của nó -> dễ dẫn đến `NullPointerException`. Do đó, hàm được gọi từ
+--     constructor nên để là `private` hoặc `final`.
+--
+-- =============================================================================
+-- JAVA-14 | Phân biệt this và super
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `this` là biến tham chiếu trỏ tới chính đối tượng hiện tại (current instance),
+--   dùng để truy cập thành viên của lớp hiện tại; còn `super` là từ khóa dùng để
+--   truy cập các thành viên (field, method, constructor) thuộc phần lớp cha trực tiếp
+--   (direct superclass) của đối tượng hiện tại. Khi gọi constructor: `this(...)` gọi
+--   một constructor nạp chồng khác trong cùng class, còn `super(...)` gọi constructor
+--   của lớp cha. [J16]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   - Truy cập thuộc tính và phương thức:
+--     * `this.field` / `this.method()`: Phân biệt biến instance với tham số truyền
+--       vào bị trùng tên, hoặc truyền chính đối tượng hiện tại đi nơi khác (`register(this)`).
+--     * `super.field` / `super.method()`: Truy cập thuộc tính của lớp cha khi bị lớp
+--       con khai báo trùng tên che khuất, hoặc gọi lại logic gốc của phương thức lớp
+--       cha đã bị lớp con `@Override`.
+--   - Điều hướng Constructor (`this(...)` vs `super(...)`): [J16]
+--     * `this(...)` ủy quyền việc khởi tạo sang constructor khác trong cùng class
+--       (constructor chaining).
+--     * `super(...)` khởi tạo phần trạng thái kế thừa từ lớp cha trước khi chạy thân
+--       constructor lớp con.
+--
+-- Ví dụ:
+--   class Animal {
+--       protected String name;
+--       Animal(String name) { this.name = name; }
+--       String speak() { return "..."; }
+--   }
+--   class Dog extends Animal {
+--       private int age;
+--       Dog(String name) { this(name, 1); }                         // gọi constructor cùng class
+--       Dog(String name, int age) { super(name); this.age = age; }  // gọi constructor lớp cha
+--       @Override String speak() { return super.speak() + "Woof"; } // gọi method lớp cha
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Cả `this(...)` và `super(...)` khi dùng trong constructor đều BẮT BUỘC phải là
+--     câu lệnh thực thi ĐẦU TIÊN trong constructor đó; do vậy không bao giờ có thể
+--     vừa gọi `this(...)` vừa gọi `super(...)` trong cùng một constructor. [J16]
+--   - Nếu constructor không viết tường minh `this(...)` hay `super(...)`, trình biên
+--     dịch sẽ tự động chèn lệnh gọi `super()` (không tham số) ở dòng đầu tiên. Bẫy:
+--     nếu lớp cha chỉ định nghĩa constructor có tham số (nên mất default constructor
+--     `super()`) mà lớp con không gọi `super(arg)` rõ ràng -> lỗi biên dịch ngay.
+--   - Không thể dùng `this` hay `super` bên trong ngữ cảnh `static` (static method,
+--     static block). Ngoài ra, Java không cho phép nối chuỗi `super.super.method()`.
+--
+-- =============================================================================
+-- JAVA-15 | Những tính chất của hướng đối tượng. Cho ví dụ áp dụng được ở đâu
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Lập trình hướng đối tượng (OOP) trong Java có 4 tính chất trụ cột: Đóng gói
+--   (Encapsulation), Kế thừa (Inheritance), Đa hình (Polymorphism) và Trừu tượng
+--   (Abstraction). Bốn tính chất này bổ trợ lẫn nhau giúp mô hình hóa bài toán thực
+--   tế thành các module dễ bảo trì, tái sử dụng và mở rộng. [J15]
+--
+-- Giải thích chi tiết kèm ví dụ áp dụng thực tế trong dự án:
+--   1. Đóng gói (Encapsulation):
+--      - Bản chất: Gom dữ liệu (fields) và hành vi thao tác trên dữ liệu đó (methods)
+--        vào chung một class, đồng thời che giấu dữ liệu nội bộ bằng `private` và
+--        chỉ giao tiếp qua các method được kiểm soát.
+--      - Áp dụng: Trong các lớp Entity/Domain Model (ví dụ class `BankAccount` giấu
+--        `balance`, chỉ mở hàm `deposit`/`withdraw` có kiểm tra số tiền dương), hoặc
+--        khi đóng gói cấu hình kết nối bên trong thư viện.
+--   2. Kế thừa (Inheritance):
+--      - Bản chất: Cho phép lớp con (`extends`) tái sử dụng các thuộc tính/phương
+--        thức không `private` của lớp cha và mở rộng hoặc chuyên biệt hóa thêm.
+--      - Áp dụng: Hệ thống phân cấp ngoại lệ của Java (`RuntimeException extends Exception`),
+--        hoặc lớp `BaseEntity` trong dự án chứa các trường dùng chung (`id`,
+--        `createdAt`, `updatedAt`) cho các Entity kế thừa.
+--   3. Đa hình (Polymorphism):
+--      - Bản chất: Cùng một lời gọi phương thức trên biến tham chiếu kiểu cha/interface
+--        nhưng lúc chạy sẽ thực thi hành vi khác nhau tùy thuộc vào kiểu đối tượng
+--        thực tế đang được trỏ tới.
+--      - Áp dụng: Khai báo `List<String> list = new ArrayList<>()` (dễ đổi sang
+--        `LinkedList`), chuẩn JDBC `Connection` (code gọi chung một API nhưng chạy
+--        với driver PostgreSQL hoặc MySQL), Dependency Injection trong Spring, hoặc
+--        thay thế service thật bằng Mock khi chạy Unit Test.
+--   4. Trừu tượng (Abstraction):
+--      - Bản chất: Tập trung vào việc đối tượng "làm được gì" (hợp đồng giao tiếp)
+--        và ẩn đi chi tiết phức tạp "làm như thế nào" thông qua `interface` hoặc
+--        `abstract class`.
+--      - Áp dụng: Thiết kế cổng thanh toán `interface PaymentGateway { Receipt charge(Order o); }`
+--        ở tầng nghiệp vụ; tầng đặt hàng chỉ gọi `gateway.charge(order)` mà không
+--        cần biết bên dưới gọi REST API của VNPay, MoMo hay Stripe.
+--
+-- Ví dụ code kết hợp cả 4 tính chất:
+--   interface Shape { double area(); }                      // Trừu tượng (Abstraction)
+--   record Circle(double r) implements Shape {              // Đóng gói + Kế thừa kiểu
+--       public double area() { return Math.PI * r * r; }
+--   }
+--   record Rect(double w, double h) implements Shape {
+--       public double area() { return w * h; }
+--   }
+--   // Đa hình (Polymorphism): biến kiểu Shape gọi đúng area() của Circle hoặc Rect lúc chạy
+--   Shape s = new Circle(2);
+--   System.out.println(s.area());
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Java chỉ hỗ trợ đơn kế thừa cho class (`extends` tối đa 1 class) để tránh sự
+--     nhập nhằng trạng thái, nhưng hỗ trợ đa kế thừa kiểu qua `interface` (`implements`
+--     nhiều interface).
+--   - Nguyên lý thiết kế thực chiến: "Ưu tiên Composition hơn Inheritance" (Favor
+--     composition over inheritance). Chỉ dùng `extends` khi hai lớp thực sự có quan
+--     hệ "is-a" chặt chẽ; nếu chỉ muốn tái sử dụng code mà dùng `extends` bừa bãi sẽ
+--     vướng lỗi Fragile Base Class (sửa lớp cha làm hỏng lớp con).
+--   - Tính đa hình runtime chỉ áp dụng cho instance method, KHÔNG áp dụng cho thuộc
+--     tính (field) hay phương thức `static`.
+--
+-- =============================================================================
+-- JAVA-16 | Phân biệt abstract class và interface (gồm default/static/private method của interface)
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `Abstract class` thể hiện mối quan hệ bản chất "is-a", dùng để chia sẻ cả TRẠNG
+--   THÁI (instance fields), constructor lẫn logic dùng chung cho một họ các lớp gần
+--   gũi nhau, và một class chỉ `extends` được 1 abstract class. Ngược lại, `Interface`
+--   định nghĩa một HỢP ĐỒNG giao tiếp hoặc khả năng ("can-do"), KHÔNG có trạng thái
+--   instance (chỉ có hằng số `public static final`), không có constructor, và một
+--   class có thể `implements` nhiều interface cùng lúc. [J17][J18]
+--
+-- Giải thích chi tiết / Bảng so sánh:
+--   - Thuộc tính (Fields):
+--     * Abstract class: Có đầy đủ instance fields và static fields (có thể mutable,
+--       với mọi mức truy cập `private`, `protected`, package-private, `public`).
+--     * Interface: Chỉ được phép có hằng số (mọi field khai báo đều ngầm định là
+--       `public static final`). [J18]
+--   - Constructor:
+--     * Abstract class: Có constructor (được lớp con gọi qua `super(...)` để khởi
+--       tạo các trường chung).
+--     * Interface: Tuyệt đối không có constructor.
+--   - Phương thức (Methods) và các nâng cấp từ Java 8 / Java 9: [J17][J18]
+--     * Abstract class: Chứa cả abstract method lẫn concrete method với mọi phạm vi
+--       truy cập (`protected`, `public`, `private`...).
+--     * Interface: Mặc định các hàm không thân là `public abstract`. Từ Java 8 bổ
+--       sung thêm `default method` (có thân hàm, để mở rộng interface như thêm
+--       `Collection.stream()` mà không làm gãy các class cũ đang implements) và
+--       `static method` (gọi qua tên interface). Từ Java 9 bổ sung thêm `private` và
+--       `private static method` để gom code dùng chung giữa các `default`/`static`
+--       method ngay bên trong interface.
+--   - Đa kế thừa: Một class chỉ `extends` 1 class, nhưng `implements` được N interface;
+--     một interface có thể `extends` nhiều interface khác.
+--
+-- Ví dụ:
+--   interface Greeter {
+--       String name();
+--       default String greet() { return prefix() + name(); }   // Java 8+ default method
+--       private String prefix() { return "Hello, "; }          // Java 9+ private helper method
+--       static Greeter of(String n) { return () -> n; }        // Java 8+ static factory method
+--   }
+--   abstract class Shape {
+--       private final String label;                            // Instance state (interface không có)
+--       protected Shape(String label) { this.label = label; }  // Constructor
+--       abstract double area();
+--       String describe() { return label + ":" + area(); }
+--   }
+--
+-- Ví dụ xử lý xung đột Default Method (Diamond Problem trên Interface):
+--   interface A { default String hi() { return "A"; } }
+--   interface B { default String hi() { return "B"; } }
+--   class C implements A, B {
+--       @Override
+--       public String hi() { return A.super.hi(); } // Bắt buộc override và chỉ rõ A.super hoặc B.super
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Câu hỏi xoáy: "Từ Java 8 interface đã có `default` method rồi, vậy có thay thế
+--     hoàn toàn abstract class được không?" -> Trả lời: KHÔNG, vì interface vẫn không
+--     thể giữ trạng thái đối tượng (instance fields), không có constructor để bảo vệ
+--     bất biến khởi tạo, và không có phạm vi `protected` cho riêng lớp con.
+--   - Quy tắc ưu tiên khi trùng chữ ký với `default` method:
+--     1. "Class wins": Phương thức định nghĩa trên class (hoặc kế thừa từ superclass)
+--        luôn được ưu tiên hơn `default` method của interface.
+--     2. Sub-interface cụ thể hơn sẽ thắng super-interface.
+--     3. Nếu hai interface độc lập có cùng `default` method (như `A` và `B` ở trên),
+--        compiler sẽ báo lỗi bắt buộc class cài đặt phải `@Override` để tự phân giải.
+--   - Từ Java 17 (JEP 409), cả `abstract class` và `interface` đều có thể khai báo
+--     `sealed` để giới hạn danh sách các lớp/interface con được phép kế thừa. [J32]
+--
+-- =============================================================================
+-- JAVA-17 | Giải thích functional interface
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Functional interface (còn gọi là SAM - Single Abstract Method interface) là
+--   interface có ĐÚNG MỘT phương thức trừu tượng. Nó đóng vai trò là kiểu đích
+--   (target type) cho biểu thức Lambda và Method Reference (`::`). Annotation
+--   `@FunctionalInterface` giúp trình biên dịch kiểm tra điều kiện này ngay lúc
+--   compile. [J19][J20]
+--
+-- Giải thích chi tiết:
+--   - Quy tắc đếm abstract method theo đặc tả JLS §9.8: [J19]
+--     * Chỉ đếm các phương thức `abstract` (dù khai báo trực tiếp trong interface đó
+--       hay kế thừa từ các super-interface).
+--     * KHÔNG đếm `default` method, `static` method và `private` method trong interface.
+--     * KHÔNG đếm các phương thức `abstract` có chữ ký trùng với phương thức `public`
+--       của lớp gốc `java.lang.Object` (như `equals(Object)`, `hashCode()`,
+--       `toString()`), vì bất kỳ class nào implements interface này đều mặc nhiên đã
+--       có phần cài đặt kế thừa từ `Object`.
+--   - Các nhóm Functional Interface dựng sẵn quan trọng nhất trong `java.util.function`:
+--     * `Predicate<T>`: nhận `T`, trả về `boolean` (`boolean test(T t)`).
+--     * `Function<T, R>`: nhận `T`, biến đổi và trả về `R` (`R apply(T t)`).
+--     * `Consumer<T>`: nhận `T`, xử lý và không trả về kết quả (`void accept(T t)`).
+--     * `Supplier<T>`: không nhận tham số, cung cấp kết quả `T` (`T get()`).
+--     * `UnaryOperator<T>` (`T -> T`) và `BinaryOperator<T>` (`(T, T) -> T`).
+--     * Các phiên bản chuyên biệt cho kiểu nguyên thủy để tránh chi phí autoboxing:
+--       `IntPredicate`, `LongBinaryOperator`, `ToIntFunction<T>`...
+--
+-- Ví dụ:
+--   import java.util.function.*;
+--   @FunctionalInterface
+--   interface PriceRule {
+--       long apply(long price);                      // 1 abstract method duy nhất
+--       default PriceRule andThen(PriceRule next) {  // default: không tính vào số abstract method
+--           return p -> next.apply(this.apply(p));
+--       }
+--       static PriceRule noChange() { return p -> p; } // static: không tính
+--       @Override boolean equals(Object o);          // trùng public method của Object: không tính
+--   }
+--   public class Main {
+--       public static void main(String[] args) {
+--           PriceRule discount10 = p -> p * 90 / 100;            // Biểu thức Lambda
+--           PriceRule tax100     = p -> p + 100;
+--           PriceRule finalRule  = discount10.andThen(tax100);
+--           System.out.println(finalRule.apply(1000));           // 1000
+--           Function<String, Integer> parse = Integer::parseInt; // Method reference
+--           System.out.println(parse.apply("42"));
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Annotation `@FunctionalInterface` KHÔNG bắt buộc: một interface có đúng 1
+--     abstract method dù không gắn `@FunctionalInterface` (ví dụ `Runnable`,
+--     `Callable<V>`, `Comparator<T>` từ các bản Java cũ) thì VẪN là functional
+--     interface và viết lambda bình thường. Tuy nhiên, thực tế luôn nên gắn
+--     `@FunctionalInterface` để trình biên dịch báo lỗi ngay nếu về sau có người vô
+--     tình thêm abstract method thứ 2 làm gãy toàn bộ các lambda đang dùng.
+--   - Một `abstract class` dù chỉ có duy nhất 1 phương thức `abstract` và không có
+--     field nào cũng KHÔNG phải là functional interface và KHÔNG thể khởi tạo bằng
+--     biểu thức Lambda. [J19]
+--
+-- =============================================================================
+-- JAVA-18 | Tính chất đa hình - phương thức đối tượng
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Đa hình đối với phương thức đối tượng (instance method) cho phép một biến tham
+--   chiếu kiểu lớp cha hoặc interface trỏ tới đối tượng của lớp con, và khi gọi
+--   phương thức đối tượng qua biến đó, JVM sẽ tự động điều phối (dynamic dispatch)
+--   để chạy đúng bản cài đặt đã ghi đè (`@Override`) của đối tượng THỰC TẾ trên Heap
+--   lúc runtime, thay vì chạy theo kiểu khai báo của biến. [J15][J21][J22]
+--
+-- Giải thích chi tiết / Phân biệt:
+--   1. Đa hình lúc biên dịch (Compile-time polymorphism / Static binding / Method Overloading):
+--      - Nhiều phương thức có cùng tên nhưng KHÁC nhau về danh sách tham số (số
+--        lượng, kiểu dữ liệu hoặc thứ tự kiểu).
+--      - Trình biên dịch quyết định chọn chữ ký hàm nào ngay tại thời điểm compile
+--        dựa vào KIỂU KHAI BÁO (compile-time type) của cả biến gọi lẫn các đối số
+--        truyền vào. [J21]
+--   2. Đa hình lúc chạy (Runtime polymorphism / Dynamic method dispatch / Method Overriding):
+--      - Lớp con định nghĩa lại một instance method có cùng chữ ký (tên + danh sách
+--        tham số) với lớp cha.
+--      - Tại thời điểm chạy (runtime), JVM tra cứu bảng phương thức ảo (vtable /
+--        itable qua các lệnh bytecode `invokevirtual` hoặc `invokeinterface`) để gọi
+--        phiên bản phương thức thuộc về KIỂU THỰC TẾ (runtime class) của đối tượng. [J21][J22]
+--
+-- Ví dụ phân biệt rõ Overloading, Overriding và Hiding trong cùng một đoạn code:
+--   class Notifier {
+--       String tag = "BASE";
+--       static String kind() { return "static-base"; }
+--       void send(Object msg) { System.out.println("Base Object: " + msg); }
+--       void send(String msg) { System.out.println("Base String: " + msg); }
+--   }
+--   class EmailNotifier extends Notifier {
+--       String tag = "EMAIL";
+--       static String kind() { return "static-email"; }
+--       @Override
+--       void send(String msg) { System.out.println("Email String: " + msg); }
+--   }
+--   public class Main {
+--       public static void main(String[] args) {
+--           Notifier n = new EmailNotifier(); // biến kiểu Notifier giữ object thực tế EmailNotifier
+--           Object payload = "Hello";
+--           n.send(payload);   // Overloading chọn send(Object) lúc compile -> in "Base Object: Hello"
+--           n.send("Hello");   // Overriding chọn EmailNotifier.send(String) lúc runtime -> in "Email String: Hello"
+--           System.out.println(n.tag);        // in "BASE" (thuộc tính KHÔNG đa hình!)
+--           System.out.println(n.kind());     // in "static-base" (static method KHÔNG đa hình!)
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Chỉ có phương thức đối tượng (non-static, non-private, non-final instance
+--     method) mới có đa hình runtime. Các thuộc tính (fields), phương thức `static`
+--     và phương thức `private` được gắn kết tĩnh (static binding) lúc compile theo
+--     kiểu khai báo của biến tham chiếu; nếu khai báo trùng tên ở lớp con thì đó chỉ
+--     là che khuất (hiding), không phải overriding! [J21]
+--   - Quy tắc bắt buộc khi Override phương thức:
+--     * Phạm vi truy cập (access modifier) ở lớp con phải bằng hoặc RỘNG HƠN lớp cha
+--       (ví dụ `protected` -> `public` thì được, nhưng `public` -> `protected` sẽ lỗi).
+--     * Kiểu trả về phải giống hệt hoặc là kiểu con (covariant return type) đối với
+--       kiểu tham chiếu.
+--     * Không được khai báo `throws` thêm các Checked Exception mới hoặc rộng hơn so
+--       với phương thức của lớp cha (Unchecked Exception thì tùy ý).
+--
+-- =============================================================================
+-- JAVA-19 | Có mấy loại exception
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Mọi ngoại lệ và lỗi trong Java đều kế thừa từ lớp gốc `java.lang.Throwable`,
+--   tách làm 2 nhánh con trực tiếp là `Error` và `Exception`; trong nhánh `Exception`
+--   lại chia thành các ngoại lệ kế thừa `RuntimeException` và phần còn lại. Khi trả
+--   lời phỏng vấn, cách phân loại chuẩn xác và thực tế nhất là chia thành 3 nhóm:
+--   (1) Checked Exception, (2) Unchecked Exception (`RuntimeException`), và (3) `Error`. [J23][J24]
+--
+-- Giải thích chi tiết & Cây phân cấp chuẩn:
+--   java.lang.Throwable
+--   ├── java.lang.Error (Unchecked - sự cố nghiêm trọng cấp độ JVM / tài nguyên hệ thống)
+--   │     └── OutOfMemoryError, StackOverflowError, NoClassDefFoundError, VirtualMachineError...
+--   └── java.lang.Exception
+--         ├── Checked Exceptions (Mọi lớp con của Exception NGOẠI TRỪ nhánh RuntimeException)
+--         │     └── IOException, SQLException, ClassNotFoundException, InterruptedException...
+--         └── java.lang.RuntimeException (Unchecked - lỗi logic lập trình / dùng sai API)
+--               └── NullPointerException, IllegalArgumentException, IllegalStateException,
+--                   IndexOutOfBoundsException, ClassCastException, ArithmeticException...
+--
+--   - Theo đúng đặc tả ngôn ngữ JLS §11.1.1: [J23]
+--     * Nhóm "Unchecked exception classes" bao gồm: `RuntimeException` cùng các lớp
+--       con của nó, VÀ `Error` cùng các lớp con của nó. Trình biên dịch không bắt
+--       buộc phải `catch` hay khai báo `throws` đối với nhóm này.
+--     * Nhóm "Checked exception classes" bao gồm: Tất cả các lớp kế thừa `Throwable`
+--       còn lại (tức là chính `Throwable`, chính `Exception`, và mọi lớp con của
+--       `Exception` không kế thừa từ `RuntimeException`).
+--
+-- Ví dụ minh họa:
+--   import java.io.*;
+--   public class Main {
+--       static void readChecked() throws IOException {       // Checked: bắt buộc throws hoặc try-catch
+--           throw new FileNotFoundException("missing.txt");
+--       }
+--       static void validateUnchecked(int age) {             // Unchecked: không bắt buộc throws
+--           if (age < 0) throw new IllegalArgumentException("age < 0");
+--       }
+--       public static void main(String[] args) {
+--           validateUnchecked(18);
+--           try { readChecked(); } catch (IOException e) { System.out.println(e.getMessage()); }
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Tuyệt đối không viết `catch (Throwable t)` hoặc `catch (Error e)` trong luồng
+--     nghiệp vụ thông thường để nuốt lỗi, bởi vì khi `OutOfMemoryError` hay
+--     `StackOverflowError` xảy ra, JVM đã rơi vào trạng thái bất ổn định và không
+--     đảm bảo ứng dụng có thể tiếp tục chạy đúng đắn. [J24]
+--   - Bẫy câu hỏi phụ: "Bản thân lớp `java.lang.Throwable` và `java.lang.Exception`
+--     là Checked hay Unchecked?" -> Trả lời: Cả hai đều được JLS phân loại là Checked
+--     (nếu một hàm khai báo `throws Exception` hoặc `throws Throwable`, nơi gọi bắt
+--     buộc phải `try-catch` hoặc `throws` tiếp). [J23]
+--
+-- =============================================================================
+-- JAVA-20 | Phân biệt CompileException(check) và RuntimeException(Uncheck)
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Trước hết cần làm rõ thuật ngữ: trong thư viện chuẩn của Java KHÔNG có lớp nào
+--   tên là `CompileException`, và mọi ngoại lệ (exception) đều chỉ phát sinh lúc
+--   CHƯƠNG TRÌNH ĐANG CHẠY (runtime). Cách gọi "CompileException" trong câu hỏi thực
+--   chất là cách gọi thông tục chỉ **Checked Exception** (vì bị trình biên dịch kiểm
+--   tra bắt buộc ở thời điểm compile), đối lập với **Unchecked Exception**
+--   (`RuntimeException` - không bị trình biên dịch ép buộc bắt lỗi lúc compile). [J23][J25]
+--
+-- Giải thích chi tiết / Phân biệt theo 3 tiêu chí:
+--   1. Cơ chế kiểm tra của trình biên dịch (Compiler check):
+--      - Checked Exception: Khi gọi một hàm có khả năng ném Checked Exception, trình
+--        biên dịch BẮT BUỘC lập trình viên phải xử lý bằng `try-catch` hoặc khai báo
+--        chuyển tiếp bằng `throws` trên chữ ký hàm; nếu không code sẽ không thể biên
+--        dịch (`unreported exception ... must be caught or declared to be thrown`).
+--      - RuntimeException (Unchecked): Trình biên dịch KHÔNG bắt buộc phải `try-catch`
+--        hay khai báo `throws`.
+--   2. Bản chất và nguyên nhân phát sinh:
+--      - Checked Exception: Đại diện cho các tình huống rủi ro khách quan từ môi
+--        trường bên ngoài mà một chương trình viết hoàn toàn đúng vẫn có thể gặp phải
+--        và cần có kịch bản xử lý/phục hồi (ví dụ: đứt kết nối mạng, file cấu hình
+--        không tồn tại, DB timeout -> `IOException`, `SQLException`).
+--      - RuntimeException (Unchecked): Đại diện cho lỗi logic lập trình (bug của
+--        developer) hoặc vi phạm điều kiện tiên quyết (precondition) khi gọi hàm mà
+--        lẽ ra phải phòng tránh bằng code kiểm tra (ví dụ: gọi hàm trên biến `null`,
+--        truy cập quá chỉ số mảng, chia cho 0, truyền tham số sai ->
+--        `NullPointerException`, `IndexOutOfBoundsException`, `IllegalArgumentException`).
+--   3. Nguyên tắc chọn loại nào khi tự viết Custom Exception (theo Oracle Docs [J37]):
+--      - Hãy tạo Checked Exception nếu người gọi hàm (caller) có thể kỳ vọng và thực
+--        hiện hành động phục hồi hợp lý từ lỗi đó.
+--      - Hãy kế thừa `RuntimeException` nếu người gọi không thể làm gì để tự phục
+--        hồi tại chỗ, hoặc đó là lỗi vi phạm hợp đồng đầu vào.
+--
+-- Ví dụ:
+--   import java.nio.file.*;
+--   import java.io.IOException;
+--   public class Main {
+--       // Checked: người gọi buộc phải biết file có thể không đọc được để có phương án dự phòng
+--       static String loadConfig(Path path) throws IOException {
+--           return Files.readString(path);
+--       }
+--       // Unchecked: lỗi truyền tham số sai, không ép mọi nơi gọi phải bọc try-catch rườm rà
+--       static int divide(int a, int b) {
+--           if (b == 0) throw new IllegalArgumentException("Divisor must not be 0");
+--           return a / b;
+--       }
+--       public static void main(String[] args) {
+--           System.out.println(divide(10, 2));
+--           try {
+--               System.out.println(loadConfig(Path.of("non_existent.cfg")));
+--           } catch (IOException e) {
+--               System.out.println("Dùng cấu hình mặc định vì: " + e.getClass().getSimpleName());
+--           }
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Đừng bao giờ nói "Checked Exception xảy ra lúc compile còn RuntimeException xảy
+--     ra lúc runtime": lúc compile chương trình chưa hề chạy nên không có file nào
+--     mở hay câu SQL nào thực thi cả; lúc compile trình biên dịch chỉ kiểm tra xem
+--     bạn ĐÃ VIẾT CODE ĐỂ ĐÓN ĐẦU khả năng xảy ra Checked Exception lúc chạy hay chưa.
+--   - Bẫy với Stream API / Lambda: Các functional interface chuẩn (`Function`,
+--     `Consumer`, `Predicate`) không khai báo `throws Exception`, nên khi gọi hàm có
+--     Checked Exception bên trong Lambda, ta phải `try-catch` tại chỗ và thường bọc
+--     (wrap) nó vào `UncheckedIOException` hoặc một `RuntimeException` kèm theo `cause`.
+--   - Trong Spring Framework (`@Transactional`), mặc định giao dịch chỉ tự động
+--     rollback khi gặp `RuntimeException` hoặc `Error`, và KHÔNG tự rollback với
+--     Checked Exception trừ khi cấu hình rõ `@Transactional(rollbackFor = Exception.class)`.
+--
+-- =============================================================================
+-- JAVA-21 | Cách xử lý exception
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Java cung cấp bộ cơ chế đầy đủ để xử lý và quản lý ngoại lệ gồm: (1) Bắt và xử
+--   lý tại chỗ bằng `try - catch - finally`, (2) Gộp các nhánh xử lý giống nhau bằng
+--   Multi-catch (`catch (ExA | ExB e)`), (3) Tự động giải phóng tài nguyên an toàn
+--   bằng `try-with-resources` cho mọi lớp cài đặt `AutoCloseable`, và (4) Chủ động
+--   ném ngoại lệ bằng `throw` hoặc đẩy trách nhiệm xử lý lên tầng gọi bằng `throws`
+--   kết hợp kỹ thuật bọc ngoại lệ giữ nguyên nhân gốc (Exception Chaining). [J25][J26][J27][J28]
+--
+-- Giải thích chi tiết:
+--   - `try - catch - finally`: Khối `try` chứa đoạn code có thể phát sinh lỗi; khối
+--     `catch` đón bắt và xử lý từng loại exception từ cụ thể đến tổng quát; khối
+--     `finally` dùng cho các thao tác bắt buộc phải chạy sau cùng.
+--   - `try-with-resources` (từ Java 7, cải tiến ở Java 9 cho phép truyền biến
+--     effectively final đã khai báo trước vào `try (r)`): Tự động gọi hàm `close()`
+--     theo thứ tự NGƯỢC LẠI với thứ tự khai báo ngay khi thoát khỏi khối `try`
+--     (trước cả khi chạy vào `catch` và `finally`). [J26][J27]
+--   - Phân biệt `throw` và `throws`: [J28]
+--     * `throw`: Câu lệnh thực thi nằm BÊN TRONG thân hàm để phát sinh một đối
+--       tượng ngoại lệ cụ thể (ví dụ `throw new IllegalArgumentException("...");`).
+--     * `throws`: Từ khóa đặt trên CHỮ KÝ HÀM (method signature) để thông báo cho
+--       trình biên dịch và người gọi biết hàm này có thể ném ra những kiểu ngoại lệ nào.
+--   - Exception Chaining (Nối chuỗi ngoại lệ): Khi bắt một ngoại lệ cấp thấp (như
+--     `SQLException`) và ném lại một ngoại lệ ở tầng nghiệp vụ, luôn truyền ngoại lệ
+--     gốc vào tham số `cause` (`new DataAccessException("...", e)`) để giữ toàn bộ
+--     stack trace gốc phục vụ điều tra lỗi.
+--
+-- Ví dụ tổng hợp (chạy được trên Java 17):
+--   import java.io.*;
+--   public class Main {
+--       // Custom exception giữ nguyên cause (Exception Chaining)
+--       static class DataAccessException extends RuntimeException {
+--           DataAccessException(String msg, Throwable cause) { super(msg, cause); }
+--       }
+--       static class DemoResource implements AutoCloseable {
+--           private final String name;
+--           DemoResource(String name) { this.name = name; }
+--           void work() throws IOException { throw new IOException("Lỗi khi đọc " + name); }
+--           @Override public void close() throws IOException {
+--               throw new IOException("Lỗi khi đóng " + name);
+--           }
+--       }
+--       static void process() {
+--           // try-with-resources: tự gọi close() kể cả khi work() ném ngoại lệ
+--           try (DemoResource r = new DemoResource("DB")) {
+--               r.work();
+--           } catch (IOException | IllegalStateException e) { // multi-catch (e ngầm final)
+--               for (Throwable sup : e.getSuppressed()) {
+--                   System.out.println("Suppressed: " + sup.getMessage());
+--               }
+--               throw new DataAccessException("Xử lý thất bại", e); // giữ nguyên gốc e
+--           } finally {
+--               System.out.println("Finally chạy sau khi resource đã đóng");
+--           }
+--       }
+--       public static void main(String[] args) {
+--           try {
+--               process();
+--           } catch (DataAccessException ex) {
+--               System.out.println("Caught: " + ex.getMessage()
+--                   + " | Cause: " + ex.getCause().getMessage());
+--           }
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Thứ tự các khối `catch`: Bắt buộc phải xếp ngoại lệ thuộc lớp CON (cụ thể, như
+--     `FileNotFoundException`) ở trên, lớp CHA (tổng quát, như `IOException` hay
+--     `Exception`) ở dưới; nếu xếp lớp cha lên trước, khối catch lớp con bên dưới sẽ
+--     trở thành unreachable code và bị lỗi biên dịch.
+--   - Trong câu lệnh multi-catch `catch (Ex1 | Ex2 e)`, các kiểu `Ex1` và `Ex2`
+--     KHÔNG được phép có quan hệ kế thừa cha-con với nhau, và biến `e` ngầm định là
+--     `final`.
+--   - Cơ chế Suppressed Exceptions trong `try-with-resources`: Nếu cả thân `try`
+--     (`work()`) VÀ hàm `close()` cùng ném ra ngoại lệ, ngoại lệ ở thân `try` sẽ
+--     được giữ làm ngoại lệ chính ném ra ngoài, còn ngoại lệ phát sinh lúc `close()`
+--     sẽ được đính kèm vào danh sách suppressed (`e.getSuppressed()`). Ngược lại, nếu
+--     tự đóng tài nguyên thủ công trong khối `finally` truyền thống, ngoại lệ của
+--     `close()` trong `finally` sẽ đè chết và làm mất dấu hoàn toàn ngoại lệ gốc! [J26][J27]
+--   - Các phản mẫu (anti-patterns) cần tránh tuyệt đối:
+--     * Nuốt ngoại lệ (`catch (Exception e) {}` để trống không làm gì).
+--     * Vừa log lỗi vừa throw lại cùng ngoại lệ đó gây trùng lặp hàng loạt stack
+--       trace giống hệt nhau trên hệ thống log (chỉ log ở tầng xử lý cuối cùng như
+--       Global Exception Handler).
+--
+-- =============================================================================
+-- JAVA-22 | Phân biệt final và finally
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `final` và `finally` là hai từ khóa có cách viết gần giống nhau nhưng hoàn toàn
+--   không liên quan về ngữ nghĩa: `final` là từ khóa bổ nghĩa (modifier) dùng trong
+--   khai báo để áp đặt tính bất biến/không thể mở rộng cho biến (gán 1 lần), phương
+--   thức (không cho override) và lớp (không cho kế thừa); còn `finally` là khối lệnh
+--   đi kèm cấu trúc xử lý ngoại lệ `try-catch-finally` hoặc `try-finally`, đảm bảo
+--   đoạn code bên trong luôn được thực thi sau khi khối `try`/`catch` kết thúc (dù
+--   chạy bình thường, có `return`/`break`, hay có ném exception). [J6][J7][J26]
+--
+-- Giải thích chi tiết & Mở rộng bộ ba kinh điển (`final` - `finally` - `finalize`):
+--   - `final` (Modifier): Kiểm soát tại thời điểm biên dịch đối với biến, method và
+--     class. [J6][J7]
+--   - `finally` (Exception handling block): Dùng để giải phóng khóa (`Lock.unlock()`),
+--     khôi phục trạng thái thread/context hoặc dọn dẹp tài nguyên sau khối `try`. [J26]
+--   - `finalize()` (Method của `java.lang.Object` - rất hay được hỏi kèm):
+--     * `protected void finalize()` là phương thức từng được Garbage Collector gọi
+--       trước khi thu hồi vùng nhớ của đối tượng.
+--     * Do thời điểm GC chạy không thể đoán trước, làm chậm quá trình thu gom rác,
+--       có nguy cơ "hồi sinh" đối tượng hoặc gây deadlock/lỗ hổng bảo mật, phương
+--       thức `finalize()` đã chính thức bị `@Deprecated(since="9")` và đánh dấu xóa
+--       bỏ (`forRemoval=true`) từ Java 18 (JEP 421). Ngày nay phải dùng
+--       `try-with-resources` (`AutoCloseable`) hoặc `java.lang.ref.Cleaner`. [J29]
+--
+-- Ví dụ minh họa `final` và thứ tự chạy của `finally` khi có `return`:
+--   public class Main {
+--       static int testFinally() {
+--           final int base = 10; // final: hằng cục bộ không gán lại được
+--           try {
+--               System.out.println("Trong try, chuẩn bị return " + base);
+--               return base;
+--           } finally {
+--               // Vẫn chạy TRƯỚC khi hàm thực sự trả kết quả về cho nơi gọi
+--               System.out.println("Trong finally: chạy trước khi return!");
+--           }
+--       }
+--       public static void main(String[] args) {
+--           System.out.println("Kết quả: " + testFinally());
+--       }
+--   }
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Câu hỏi bẫy 1: "Khi nào khối `finally` KHÔNG được thực thi?"
+--     1. Luồng thực thi bị lỗi hoặc `return` ngay TRƯỚC khi bước vào khối `try`.
+--     2. Bên trong `try` hoặc `catch` gọi lệnh dừng JVM như `System.exit(int)` hoặc
+--        `Runtime.getRuntime().halt(int)`.
+--     3. Tiến trình JVM bị hệ điều hành buộc dừng đột ngột (`kill -9` / `SIGKILL`),
+--        máy chủ mất điện, hoặc JVM crash ở tầng native code.
+--     4. Luồng thực thi bị treo vĩnh viễn bên trong khối `try` (vòng lặp vô hạn hoặc
+--        deadlock).
+--     5. Luồng đang chạy là một `daemon thread` và toàn bộ các `non-daemon threads`
+--        khác của ứng dụng đã kết thúc nên JVM tắt ngay.
+--   - Câu hỏi bẫy 2: "Điều gì xảy ra nếu sửa biến hoặc viết `return` trong `finally`?"
+--     * Nếu `try` có lệnh `return x;` (với `x` là kiểu nguyên thủy), giá trị của `x`
+--       đã được lưu tạm vào khung trả về trước khi nhảy vào `finally`; nên nếu trong
+--       `finally` chỉ viết `x = 99;` (mà không `return` trong `finally`), hàm vẫn
+--       trả về giá trị cũ của `x`!
+--     * Tuyệt đối KHÔNG BAO GIỜ viết `return` hoặc `throw` trong khối `finally`: nó
+--       sẽ ghi đè giá trị trả về của `try` và nguy hiểm hơn là NUỐT MẤT hoàn toàn
+--       mọi exception đang được ném ra từ khối `try`/`catch`! [J26]
+--
+-- =============================================================================
+-- NGUỒN CHÍNH THỨC
+-- =============================================================================
+-- [J1] https://docs.oracle.com/javase/specs/jls/se17/html/jls-4.html
+-- [J2] https://docs.oracle.com/javase/tutorial/java/nutsandbolts/datatypes.html
+-- [J3] https://docs.oracle.com/javase/specs/jvms/se17/html/jvms-2.html
+-- [J4] https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.9
+-- [J5] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/Enum.html
+-- [J6] https://docs.oracle.com/javase/specs/jls/se17/html/jls-4.html#jls-4.12.4
+-- [J7] https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.4.3.3
+-- [J8] https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.4.3.2
+-- [J9] https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.8
+-- [J10] https://docs.oracle.com/javase/specs/jls/se17/html/jls-6.html#jls-6.6
+-- [J11] https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.1.3
+-- [J12] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/reflect/AccessibleObject.html#setAccessible(boolean)
+-- [J13] https://openjdk.org/jeps/403
+-- [J14] https://docs.oracle.com/javase/specs/jls/se17/html/jls-7.html#jls-7.7
+-- [J15] https://docs.oracle.com/javase/tutorial/java/concepts/index.html
+-- [J16] https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.8.7.1
+-- [J17] https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.1.1.1
+-- [J18] https://docs.oracle.com/javase/specs/jls/se17/html/jls-9.html
+-- [J19] https://docs.oracle.com/javase/specs/jls/se17/html/jls-9.html#jls-9.8
+-- [J20] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/FunctionalInterface.html
+-- [J21] https://docs.oracle.com/javase/specs/jls/se17/html/jls-8.html#jls-8.4.8
+-- [J22] https://docs.oracle.com/javase/specs/jls/se17/html/jls-15.html#jls-15.12.4
+-- [J23] https://docs.oracle.com/javase/specs/jls/se17/html/jls-11.html
+-- [J24] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/Throwable.html
+-- [J25] https://docs.oracle.com/javase/specs/jls/se17/html/jls-11.html#jls-11.2
+-- [J26] https://docs.oracle.com/javase/specs/jls/se17/html/jls-14.html#jls-14.20
+-- [J27] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/AutoCloseable.html
+-- [J28] https://docs.oracle.com/javase/specs/jls/se17/html/jls-14.html#jls-14.18
+-- [J29] https://docs.oracle.com/en/java/javase/17/docs/api/java.base/java/lang/ref/Cleaner.html
+-- [J30] https://docs.oracle.com/javase/tutorial/getStarted/intro/definition.html
+-- [J31] https://docs.oracle.com/en/java/javase/17/docs/specs/man/index.html
+-- [J32] https://openjdk.org/jeps/409
+-- [J33] https://openjdk.org/jeps/411
+-- [J34] https://openjdk.org/jeps/395
+-- [J35] https://docs.oracle.com/javase/specs/jls/se17/html/jls-5.html#jls-5.1.7
+-- [J36] https://docs.oracle.com/javase/specs/jls/se17/html/jls-12.html#jls-12.4
+-- [J37] https://docs.oracle.com/javase/tutorial/essential/exceptions/runtime.html

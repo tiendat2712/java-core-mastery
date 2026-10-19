@@ -1,15 +1,24 @@
-//TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
-// click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
+import bean.Customer;
+import bean.Order;
+import bean.Product;
+import common.SampleData;
+
+import java.util.List;
+
+/** Điểm bắt đầu của bài làm. Đọc README.md trước khi triển khai. */
 public class Main {
     public static void main(String[] args) {
-        //TIP Press <shortcut actionId="ShowIntentionActions"/> with your caret at the highlighted text
-        // to see how IntelliJ IDEA suggests fixing it.
-        System.out.printf("Hello and welcome!");
+        List<Customer> customers = SampleData.customers();
+        List<Product> products = SampleData.products();
+        List<Order> orders = SampleData.orders();
+        List<Order> invalidOrders = SampleData.invalidOrders();
 
-        for (int i = 1; i <= 5; i++) {
-            //TIP Press <shortcut actionId="Debug"/> to start debugging your code. We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-            // for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.
-            System.out.println("i = " + i);
-        }
+        System.out.println("JAVA CORE FINAL ASSIGNMENT - NOVA SHOP");
+        System.out.println("Raw customer records: " + customers.size());
+        System.out.println("Products: " + products.size());
+        System.out.println("Orders: " + orders.size());
+        System.out.println("Invalid order scenarios: " + invalidOrders.size());
+        System.out.println("Report period: " + SampleData.REPORT_FROM + " -> " + SampleData.REPORT_TO);
+        System.out.println("Read lesson15-final-assignment/README.md and implement your application.");
     }
 }

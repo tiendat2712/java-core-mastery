@@ -1,0 +1,338 @@
+-- PHỎNG VẤN GIT | 9/9 CÂU TRONG ẢNH
+-- Đây là tài liệu ôn tập. Mọi dòng đều là comment SQL; lệnh Git chạy ở terminal.
+-- Ví dụ dùng remote origin, nhánh chính main; thay bằng tên thực tế của dự án.
+-- Nguồn [G1]..[G9] được ánh xạ ở cuối file. Đối chiếu ngày 19/10/2026.
+--
+-- =============================================================================
+-- GIT-01 | Git là gì? Sử dụng như thế nào?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Git là hệ thống quản lý phiên bản phân tán (DVCS), lưu lịch sử thay đổi bằng
+--   các snapshot thông qua commit, cho phép nhiều lập trình viên làm việc độc lập
+--   trên các branch rồi tích hợp lại. Bản clone thông thường chứa đầy đủ lịch sử
+--   repository tại máy cá nhân nên hầu hết thao tác (xem log, diff, tạo branch,
+--   commit) đều thực hiện offline được. Cần phân biệt: Git là công cụ quản lý
+--   phiên bản, còn GitHub/GitLab là nền tảng lưu trữ repository và cộng tác. [G1]
+--
+-- Giải thích luồng sử dụng cơ bản:
+--   Sửa file trên working tree -> chọn thay đổi đưa vào staging area (index) ->
+--   tạo commit lưu vào repository local -> push lên remote để chia sẻ với nhóm.
+--
+-- Ví dụ tự thực hành trong repository đã có:
+--   git status
+--   git diff
+--   git add src/Main.java
+--   git diff --staged
+--   git commit -m "Fix order total calculation"
+--   git push origin feature/order-total
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - `git add` chỉ đưa thay đổi vào staging area, chưa tạo commit; `git commit`
+--     chỉ lưu vào repository local, chưa đẩy code lên server cho tới khi `git push`.
+--   - Cần cấu hình đúng tên/email author (`user.name`, `user.email`).
+--   - Tuyệt đối không đưa secret (.env, khóa bí mật) hoặc thư mục build vào commit
+--     (cần kiểm soát bằng `.gitignore` và đọc `git diff --staged` trước khi commit
+--     để tránh thêm file ngoài phạm vi task).
+--
+-- =============================================================================
+-- GIT-02 | Phân biệt git fetch và git clone
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `git clone` dùng khi chưa có repository ở máy local: lệnh này khởi tạo một
+--   repository mới từ nguồn, thường thiết lập remote `origin`, tải dữ liệu và
+--   checkout nhánh mặc định. Ngược lại, `git fetch` dùng bên trong một repository
+--   local đã tồn tại để tải các object và ref mới nhất từ remote về cập nhật cho
+--   remote-tracking refs (như `origin/main`) mà không tự động gộp vào nhánh đang
+--   làm việc. [G2,G3]
+--
+-- Giải thích chi tiết:
+--   - `git clone`: Tạo thư mục/repository local mới, cấu hình remote, tải lịch sử
+--     và tạo working tree ở nhánh mặc định (trừ khi dùng cờ đặc biệt). [G2]
+--   - `git fetch`: Chỉ đồng bộ dữ liệu mới từ remote về kho dữ liệu local và cập
+--     nhật các con trỏ theo dõi từ xa (`refs/remotes/origin/*`) theo refspec. [G3]
+--
+-- Ví dụ:
+--   git clone https://github.com/git/git.git git-source
+--   cd git-source
+--   git fetch origin
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - `git fetch` thông thường không tự merge vào nhánh đang đứng và không làm
+--     thay đổi nội dung working tree.
+--   - `origin/main` là một remote-tracking ref nằm ở máy local phản ánh trạng thái
+--     lần đồng bộ gần nhất, không phải kết nối trực tiếp luôn tự cập nhật theo
+--     thời gian thực với server.
+--   - Không phát biểu tuyệt đối rằng mọi lệnh `git clone` đều tải toàn bộ mọi dữ
+--     liệu hoặc luôn tạo working tree, vì `clone` có các biến thể như shallow
+--     clone (`--depth`), partial clone (`--filter`) hoặc bare clone (`--bare`).
+--
+-- =============================================================================
+-- GIT-03 | Phân biệt fetch và pull
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `git fetch` chỉ tải dữ liệu và cập nhật remote-tracking refs về máy để ta
+--   kiểm tra trước, hoàn toàn không chạm vào nhánh hiện tại hay working tree.
+--   Trong khi đó, `git pull` thực chất là `git fetch` cộng thêm bước tích hợp
+--   ngay nhánh nguồn từ remote vào nhánh hiện tại (theo tùy chọn hoặc cấu hình:
+--   fast-forward, merge hoặc rebase). [G3,G4]
+--
+-- Giải thích chi tiết:
+--   - Dùng `git fetch` khi muốn chủ động xem đồng đội đã đẩy những commit gì lên,
+--     so sánh diff/log rồi mới quyết định tích hợp như thế nào. [G3]
+--   - Dùng `git pull` khi muốn tải về và cập nhật luôn vào nhánh đang đứng. [G4]
+--
+-- Ví dụ chủ động kiểm tra `main` bằng fetch rồi mới merge:
+--   git fetch origin
+--   git log --oneline --left-right HEAD...origin/main
+--   git diff HEAD..origin/main
+--   git merge origin/main
+--
+-- Ví dụ dùng pull nhưng chỉ cho phép nhánh local tiến thẳng (không tạo merge commit):
+--   git pull --ff-only origin main
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Nếu lịch sử local và remote đã phân kỳ, `git pull --ff-only` sẽ từ chối;
+--     lúc đó lập trình viên chủ động chọn `merge` hoặc `rebase`.
+--   - `git pull` tác động trực tiếp vào nhánh hiện tại, có thể thay đổi working
+--     tree và phát sinh conflict ngay lập tức; `git fetch` đơn thuần không thực
+--     hiện bước tích hợp đó. Luôn kiểm tra đang đứng ở nhánh nào trước khi `pull`.
+--
+-- =============================================================================
+-- GIT-04 | Pull request là gì?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Pull Request (PR, hay Merge Request trên GitLab) là cơ chế trên các nền tảng
+--   quản lý mã nguồn như GitHub dùng để đề nghị tích hợp thay đổi từ một nhánh
+--   nguồn vào một nhánh đích. PR cung cấp giao diện tập trung để xem diff, thảo
+--   luận, review code từng dòng và kiểm tra kết quả CI/CD trước khi gộp code. [G5]
+--
+-- Giải thích quy trình thực tế:
+--   Push nhánh công việc lên remote -> Mở PR hướng vào nhánh đích (nêu rõ vấn đề,
+--   giải pháp, phạm vi ảnh hưởng, cách test) -> Đồng đội review & hệ thống chạy
+--   CI -> Đẩy thêm commit chỉnh sửa nếu có góp ý -> Merge khi đạt đủ điều kiện.
+--
+-- Ví dụ tình huống:
+--   Lập trình viên tạo PR từ nhánh `feature/order-total` vào `main`; người review
+--   kiểm tra công thức tính tiền, unit test, phạm vi file thay đổi rồi approve
+--   hoặc yêu cầu chỉnh sửa (request changes).
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Pull Request là tính năng của nền tảng (GitHub/GitLab/Bitbucket), KHÔNG phải
+--     là lệnh `git pull` của Git CLI.
+--   - Mở PR không tự động merge code; ngay cả khi đã được approve cũng chưa chắc
+--     merge được ngay nếu CI bị đỏ hoặc chưa thỏa các quy tắc bảo vệ nhánh (branch
+--     protection rules).
+--   - Khi bấm Merge trên GitHub, tùy cấu hình repository sẽ có 3 chiến lược:
+--     Create a merge commit, Squash and merge, hoặc Rebase and merge.
+--
+-- =============================================================================
+-- GIT-05 | Phân biệt pull và pull --rebase
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Cả hai đều tải dữ liệu mới từ remote (`fetch`) rồi tích hợp vào nhánh hiện tại,
+--   nhưng khác nhau ở cách tích hợp sau khi fetch: `git pull --rebase` luôn tích
+--   hợp bằng cách đặt lại nền (phát lại các commit local lên trên đầu nhánh
+--   upstream để giữ lịch sử thẳng), còn `git pull` không truyền cờ sẽ tích hợp
+--   theo cấu hình của Git (thường là merge, hoặc fast-forward/rebase tùy cấu hình
+--   `pull.rebase`, `branch.<name>.rebase`, `pull.ff` và phiên bản Git). [G4]
+--
+-- Giải thích chi tiết:
+--   - `git pull --no-rebase`: Chỉ định rõ tích hợp bằng merge. Nếu nhánh chỉ tiến
+--     thẳng thì fast-forward; nếu lịch sử đã phân kỳ thì thường tạo merge commit
+--     (vẫn chịu ràng buộc nếu có cấu hình như `--ff-only`).
+--   - `git pull --rebase`: Đưa các commit mới của remote xuống làm nền trước, rồi
+--     phát lại (replay) từng commit chỉ có ở local lên trên đầu. Các commit local
+--     được viết lại sẽ mang mã hash mới, giúp lịch sử tuyến tính, gọn gàng.
+--
+-- Ví dụ so sánh tường minh ý định bằng lệnh:
+--   git pull --no-rebase origin main
+--   git pull --rebase origin main
+--
+-- Ví dụ xử lý khi gặp conflict lúc pull --rebase và kiểm tra cấu hình:
+--   # Sửa file bị conflict -> đánh dấu đã giải quyết -> tiếp tục rebase:
+--   git add src/OrderService.java
+--   git rebase --continue
+--   # Hoặc hủy quá trình rebase để quay lại trạng thái trước đó:
+--   git rebase --abort
+--   # Kiểm tra cấu hình pull hiện hành khi hành vi khác dự đoán:
+--   git config --show-origin --get-regexp "^(pull\.|branch\..*\.rebase)"
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Bẫy rất phổ biến: Không trả lời cứng nhắc rằng "`git pull` luôn tạo merge
+--     commit", vì `git pull` không cờ phụ thuộc vào cấu hình `pull.rebase` và
+--     trạng thái phân kỳ của nhánh.
+--   - `git pull --rebase` rất hợp để làm sạch lịch sử nhánh cá nhân trước khi
+--     push/mở PR, nhưng tránh tự ý viết lại lịch sử các commit mà đồng đội đang
+--     dựa vào; cần tuân thủ workflow thống nhất của nhóm.
+--
+-- =============================================================================
+-- GIT-06 | Phân biệt git rebase và git merge
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   `git merge` và `git rebase` đều dùng để tích hợp thay đổi từ nhánh này sang
+--   nhánh khác nhưng khác bản chất xử lý lịch sử: `merge` nối hai dòng lịch sử
+--   lại và giữ nguyên các commit hiện có (thường tạo thêm một merge commit có hai
+--   parent khi hai nhánh đã phân kỳ), còn `rebase` đặt lại nền của nhánh bằng cách
+--   phát lại các commit lên trên nhánh đích, tạo ra các commit mới với hash mới
+--   để lịch sử tuyến tính. [G6,G7]
+--
+-- Giải thích chi tiết:
+--   - `git merge`: Bảo toàn đúng ngữ cảnh thời gian và dấu vết phân nhánh. Trường
+--     hợp nhánh đích chưa có commit mới (chưa phân kỳ), Git có thể chỉ dịch chuyển
+--     con trỏ (fast-forward) mà không tạo commit mới. [G6]
+--   - `git rebase`: Viết lại lịch sử của nhánh đang đứng bằng cách áp lại từng
+--     commit lên đầu nhánh nền, giúp tránh các merge commit trung gian. [G7]
+--
+-- Ví dụ minh họa đồ thị lịch sử và lệnh:
+--   # Trước khi tích hợp:
+--   #   A---B---C  main
+--   #        \---D---E  feature
+--   #
+--   # Phương án 1 - Đứng ở feature chạy `git merge main`:
+--   #   A---B---C
+--   #        \---D---E---M   (M là merge commit có 2 parent: E và C)
+--   #
+--   # Phương án 2 - Đứng ở feature chạy `git rebase main`:
+--   #   A---B---C---D'---E'  (D' và E' là commit mới có hash mới)
+--   git switch feature
+--   git merge main
+--   # Hoặc chọn:
+--   git rebase main
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Khi nào dùng gì: Dùng `merge` khi tích hợp vào nhánh chung hoặc cần giữ dấu
+--     vết lịch sử đã chia sẻ; dùng `rebase` khi muốn cập nhật nhánh cá nhân gọn
+--     gàng trước khi tích hợp. Nguyên tắc vàng: tránh rebase các commit đã chia sẻ
+--     mà người khác đang phát triển dựa trên đó.
+--   - Cả hai đều có thể gặp conflict. Với `rebase`, vì phát lại từng commit nên có
+--     thể phải giải quyết conflict ở nhiều bước; khi sửa conflict phải hiểu đúng
+--     logic nghiệp vụ và chạy lại test chứ không chỉ xóa dấu `<<<<<<<` cho hết lỗi
+--     cú pháp. Có thể hủy bằng `git merge --abort` hoặc `git rebase --abort`.
+--
+-- =============================================================================
+-- GIT-07 | Branch là gì? Khi nào tạo branch và để làm gì?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Trong Git, branch (nhánh) bản chất là một con trỏ (ref) nhẹ có tên trỏ tới một
+--   commit; khi ta tạo commit mới trên nhánh đó, con trỏ nhánh tự động tiến lên.
+--   Ta tạo branch mỗi khi làm một feature mới, sửa bug, thử nghiệm hoặc chuẩn bị
+--   release nhằm cô lập phạm vi thay đổi, giữ nhánh chính luôn ổn định và giúp
+--   quá trình review/merge qua Pull Request được kiểm soát chặt chẽ. [G8]
+--
+-- Giải thích chi tiết:
+--   - `HEAD` thường trỏ tới nhánh đang được checkout hiện tại để Git biết bạn đang
+--     làm việc trên nhánh nào.
+--   - Tạo branch trong Git rất nhanh và nhẹ vì Git chỉ tạo một ref mới trỏ vào
+--     commit hiện hành, không phải copy nhân bản toàn bộ thư mục vật lý của dự án. [G8]
+--
+-- Ví dụ bắt đầu task khi `main` local đã đồng bộ và working tree sạch:
+--   git switch main
+--   git pull --ff-only origin main
+--   git switch -c feature/order-total
+--   git push -u origin feature/order-total
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Cờ `-u` (`--set-upstream`) trong `git push -u` dùng để liên kết nhánh local
+--     với nhánh tương ứng trên remote cho các lần pull/push sau, không phải merge.
+--   - Bẫy thực tế: Việc chuyển nhánh (`git switch` / `git checkout`) KHÔNG tự động
+--     cô lập các thay đổi CHƯA commit trên working tree/staging area — chúng có
+--     thể đi theo sang nhánh mới hoặc khiến Git từ chối chuyển nhánh nếu xung đột.
+--     Hãy commit phần việc hợp lý hoặc dùng `git stash` trước khi đổi nhánh.
+--   - Mỗi nhánh chỉ nên phục vụ một mục tiêu rõ ràng, tránh gom nhiều task không
+--     liên quan vào chung một nhánh gây khó review và khó revert.
+--
+-- =============================================================================
+-- GIT-08 | Push lên remote bị reject thì xử lý thế nào?
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Khi `git push` bị reject, bước đầu tiên là đọc kỹ thông báo lỗi từ server vì
+--   reject không chỉ do lệch lịch sử (non-fast-forward) mà còn có thể do thiếu
+--   quyền/xác thực, nhánh bị khóa bảo vệ (protected branch), hoặc vi phạm server
+--   hook/quy tắc commit. Nếu là lỗi non-fast-forward (remote có commit mới mà
+--   local chưa có), ta cần `git fetch` về, kiểm tra lịch sử, tích hợp nhánh remote
+--   vào local bằng `merge` hoặc `rebase` theo quy ước của nhóm, xử lý conflict và
+--   chạy lại test rồi mới `push` lại. [G9]
+--
+-- Giải thích cách xử lý theo từng nguyên nhân:
+--   - Non-fast-forward: Giữ an toàn thay đổi đang làm, kiểm tra đúng nhánh/remote,
+--     `fetch` và tích hợp (`merge` hoặc `rebase`), test lại rồi push.
+--   - Permission / Authentication: Kiểm tra remote URL, tài khoản, SSH key/token
+--     và quyền ghi trên repository.
+--   - Protected branch: Không được push thẳng vào `main`/`develop`; phải đẩy lên
+--     nhánh công việc riêng rồi tạo Pull Request.
+--   - Pre-receive hook / quy tắc dự án (sai chuẩn commit message, dính file quá
+--     lớn hoặc nhạy cảm): Sửa đúng nguyên nhân được báo, không cố lách quy định.
+--
+-- Ví dụ đang làm trên `feature/order-total` và bị reject do remote có commit mới:
+--   git status
+--   git remote -v
+--   git fetch origin
+--   git log --oneline --left-right HEAD...origin/feature/order-total
+--   git merge origin/feature/order-total
+--   # (Hoặc dùng `git rebase origin/feature/order-total` nếu nhóm quy ước rebase)
+--   git push origin feature/order-total
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Tuyệt đối không phản xạ gõ `git push --force` ngay khi bị reject vì sẽ ghi
+--     đè làm mất commit của đồng đội trên remote.
+--   - Chỉ khi bạn chủ động viết lại lịch sử nhánh cá nhân đã push (như sau khi
+--     rebase/amend) và đã thống nhất với nhóm thì mới cân nhắc dùng
+--     `git push --force-with-lease`. Dù vậy, cần hiểu `--force-with-lease` chỉ
+--     kiểm tra ref trên remote có khớp với trạng thái local đang biết hay không
+--     (nếu vừa `fetch` mà không kiểm tra kỹ vẫn có rủi ro ghi đè) và cũng không
+--     vượt qua được quyền bảo vệ nhánh (protected branch).
+--
+-- =============================================================================
+-- GIT-09 | Các bước khi nhận một task từ dự án
+-- =============================================================================
+-- Trả lời phỏng vấn:
+--   Khi nhận một task mới, em luôn đi theo quy trình 3 giai đoạn: Làm rõ yêu cầu
+--   trước khi code -> Phát triển & kiểm thử trên nhánh độc lập theo chuẩn dự án ->
+--   Đồng bộ, tự review diff trước khi mở PR và theo dõi tới khi merge/deploy xong.
+--   Cách làm này giúp tránh hiểu sai nghiệp vụ, hạn chế conflict và đảm bảo chất
+--   lượng code khi đưa vào nhánh chính.
+--
+-- Giải thích chi tiết 9 bước thực hiện (khung tư duy chuẩn):
+--   1. Đọc kỹ yêu cầu, làm rõ input/output, acceptance criteria và các trường hợp
+--      biên (edge cases).
+--   2. Xác định module bị ảnh hưởng, đọc code/convention hiện tại; nếu là bugfix
+--      thì tái hiện bug trước; trao đổi để chốt phương án nếu yêu cầu còn mơ hồ.
+--   3. Kiểm tra trạng thái local, đồng bộ base branch (`main`/`develop`) mới nhất
+--      đúng quy trình rồi tạo branch mới đặt tên theo quy ước của task.
+--   4. Implement đúng phạm vi đã thống nhất; viết/cập nhật unit test, chạy build
+--      và các kiểm tra của dự án; rà soát tác động phụ ngoài luồng chính.
+--   5. Tự đọc lại `git status` và `git diff`, dọn sạch log debug, file thừa hoặc
+--      thông tin nhạy cảm; chia commit có ý nghĩa với commit message rõ ràng.
+--   6. `git fetch` để kiểm tra cập nhật mới trên base branch, xử lý lệch nhánh
+--      hoặc conflict theo workflow của nhóm rồi chạy test lại.
+--   7. Push nhánh lên remote và mở Pull Request: mô tả rõ vấn đề, hành vi sau khi
+--      sửa, cách kiểm tra và các lưu ý/giới hạn (nếu có).
+--   8. Phản hồi nhận xét khi code review, cập nhật code, theo dõi kết quả CI và
+--      thực hiện merge khi đủ quyền cũng như điều kiện.
+--   9. Theo dõi kết quả triển khai theo trách nhiệm, cập nhật trạng thái ticket/
+--      tài liệu; dọn nhánh sau khi merge theo quy định (không xóa nhánh khi công
+--      việc chưa được tích hợp xong).
+--
+-- Ví dụ minh họa acceptance criterion khi nhận task:
+--   Task xử lý đơn hàng có 2 sản phẩm kèm mã giảm giá: acceptance criterion quy
+--   định voucher hết hạn không được trừ tiền; khi làm task và viết test cần kiểm
+--   tra cả tổng tiền đơn hàng lẫn thông báo từ chối voucher hết hạn.
+--
+-- Lưu ý / Bẫy phỏng vấn:
+--   - Nhà tuyển dụng hỏi câu này để đánh giá tính kỷ luật và khả năng làm việc
+--     nhóm: đừng chỉ trả lời "nhận task -> code -> push", hãy nhấn mạnh bước làm
+--     rõ yêu cầu/edge cases trước khi code, bước tự xem `git diff` + chạy test
+--     trước khi mở PR, và bước đồng bộ nhánh/theo dõi CI.
+--
+-- =============================================================================
+-- NGUỒN CHÍNH THỨC
+-- =============================================================================
+-- [G1] https://git-scm.com/book/en/v2/Getting-Started-About-Version-Control
+-- [G2] https://git-scm.com/docs/git-clone
+-- [G3] https://git-scm.com/docs/git-fetch
+-- [G4] https://git-scm.com/docs/git-pull
+-- [G5] https://docs.github.com/en/pull-requests/reference/pull-requests
+-- [G6] https://git-scm.com/docs/git-merge
+-- [G7] https://git-scm.com/docs/git-rebase
+-- [G8] https://git-scm.com/book/en/v2/Git-Branching-Branches-in-a-Nutshell
+-- [G9] https://git-scm.com/docs/git-push
