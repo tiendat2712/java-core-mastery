@@ -1,0 +1,9 @@
+*** Danh sách mặt hàng ***
+==========================
+1, green, 170.0, Vietnam
+16, green, 300.0, Vietnam
+22, red, 300.0, Lao
+4, yellow, 400.0, Thailand
+17, red, 600.0, Vietnam
+6, green, 199.0, Thailand
+==========================
