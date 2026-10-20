@@ -17,3 +17,11 @@ Constructor Reference
 + map(List<T>, Function<T, R>)
 
 ======= STREAM =========
+
+Từ 1 CTDL bất kỳ (danh sách[collection, array])
+
+-> chuyển sang CTDL Stream<T>
+
+-> gọi các hàm bên trong Stream để xử lí
+
+--> convert ngược lại các KDL khác chứ không lưu trữ trong Stream<T>

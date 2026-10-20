@@ -1,12 +1,84 @@
 package view;
 
+import common.BuFunction;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class Ex07ConstructorReferenceExamples {
 
     public static void main(String[] args) {
+
+        // Dạng 1: constructor reference cho hàm khởi tạo rỗng
+
+        // constructor reference with 0,1,2,3,4...n params
+
+        // có hàm nào, có tham số là Supplier<T>, cần truyền supplier cho bất kì đối tượng nào
+        // --> khởi tạo supplier để tạo ra đối tượng cho TestCon
+        Supplier<TestCon> supplier = () -> new TestCon();
+        System.out.println("supplier --> " + supplier.get());
+
+        Supplier<TestCon> supplier1 = TestCon::new;
+        System.out.println("supplier1 --> " + supplier1.get());
+
+        System.out.println("\n");
+
+        // Dạng 2: constructor reference cho hàm khởi tạo có 2 tham số
+//        (a1, a2) -> new TestCon(a1, a2); --> BiFunction
+        BiFunction<Integer, String, TestCon> biFunction = (a1, a2) -> new TestCon(a1, a2);
+        System.out.println("biFunction --> " + biFunction.apply(1, "Test BiFunction interface"));
+
+        BiFunction<Integer, String, TestCon> biFunction1 = TestCon::new;
+        // type inference --> dựa vào vế bên trái để xác định gọi hàm constructor nào
+        System.out.println("biFunction --> " + biFunction.apply(2, "Test Constructor Reference"));
+
+        System.out.println("\n");
+
+        // Dạng 3: constructor reference cho hàm khởi tạo có 1 tham số
+        Function<BigDecimal, TestCon> function = a1 -> new TestCon(a1);
+        System.out.println("function --> " + function.apply(BigDecimal.valueOf(100)));
+
+        Function<BigDecimal, TestCon> function1 = TestCon::new;
+        System.out.println("function1 --> " + function1.apply(BigDecimal.valueOf(200)));
+
+        System.out.println("\n");
+
+        // Dạng 4: constructor reference cho hàm khởi tạo có 4 tham số
+        BuFunction<Integer, String, LocalDate, BigDecimal, TestCon> buFunction
+                = (a1, a2, a3, a4) -> new TestCon(a1, a2, a3, a4);
+        buFunction = Ex07ConstructorReferenceExamples::test;
+        buFunction = TestCon::new;
+        System.out.println("buFunction --> " + buFunction.apply(1, "Siuuu", LocalDate.now(), BigDecimal.valueOf(350)));
+
+        BuFunction<Integer, String, LocalDate, BigDecimal, TestCon> buFunction1
+                = TestCon::new;
+        System.out.println("buFunction1 --> " + buFunction1.apply(2, "Meoooo", LocalDate.now(), BigDecimal.valueOf(300)));
+
+        System.out.println("\n");
+
+        // Supplier(T)         --> ()     -> T
+        // Function<T, R>      --> T      -> R
+        // BiFunction<T, U, R> --> (T, U) -> R
+
+        // Từ 3 tham số --> phải tự custom Functional Interface
+        // ---> chuyển sang dùng static method reference
+        Function<TestCon, TestCon> ftc = TestCon::convert;
+        System.out.println("ftc --> " + ftc.apply(new TestCon(3, "KKKK", LocalDate.now(), BigDecimal.valueOf(185))));
+
+        System.out.println("\n");
+
+        BiFunction<TestCon, TestCon, TestCon> bfz = TestCon::new;
+        System.out.println("bfz --> " + bfz.apply(
+                new TestCon(4, "Junior", LocalDate.now(), BigDecimal.valueOf(185)),
+                new TestCon(5, "Maderla", LocalDate.now(), BigDecimal.valueOf(124))
+        ));
+
+
+
 
 
 
