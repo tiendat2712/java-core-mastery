@@ -1,14 +1,22 @@
 package exception;
 
-public class InvalidImageException extends Exception{
+public class InvalidImageException extends Exception {
+	
+	private static final long serialVersionUID = -3569727925756722826L;
+	
+	// Runtime(Unchecked) Exception
+	// Compile(Checked) Exception
+	
+	// Code
+	
+	// Class extends Exception
+	// Class extends RuntimeException
 
-//    private static final long serialVersionUID = -352735825239528922L;
+	// text data
+	// serialized data
 
-    // text data
-    // serialized data
-
-    public InvalidImageException(String msg) {
-        super(msg);
-    }
-
+	public InvalidImageException(String message) {
+		super(message);
+	}
+	
 }

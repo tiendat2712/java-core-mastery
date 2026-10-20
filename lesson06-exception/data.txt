@@ -1,0 +1,14 @@
+1, Le A, 16
+2, Le B, 8
+4, Le D, 12
+5, Le E, 14
+6, Le F, 20
+80, Le X, 6
+81, Le Y, 8
+100, Le W, 32
+
+--> strategy
+--> builder
+
+    + BigDecimal
+    + LocalDate
